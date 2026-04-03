@@ -23,7 +23,7 @@ export const getGPOs = async (req: Request, res: Response): Promise<void> => {
     const gpos = await GPOModel.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit).populate('hospitals');
 
     const total = await GPOModel.countDocuments(searchQuery);
 

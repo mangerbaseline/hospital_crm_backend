@@ -75,7 +75,6 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
 export const createUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
-    console.log(req.body);
 
     // Validate Email
     const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
@@ -84,10 +83,38 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      res.status(400).json({ success: false, message: 'User already exists' });
+      return;
+    }
+
+
+
     // Validate Password
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#]).{8,}$/;
-    if (!password || !passwordRegex.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must be at least 8 characters long and include one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&#)' });
+    if (!password) {
+      res.status(400).json({ success: false, message: 'Password is required' });
+      return;
+    }
+    if (password.length < 8) {
+      res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
+      return;
+    }
+    if (!/[a-z]/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one lowercase letter' });
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one uppercase letter' });
+      return;
+    }
+    if (!/\d/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one number' });
+      return;
+    }
+    if (!/[@$!%*?&#]/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one special character (@$!%*?&#)' });
       return;
     }
 
@@ -123,9 +150,24 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 
     // Validate Password if provided
     if (password) {
-      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#]).{8,}$/;
-      if (!passwordRegex.test(password)) {
-        res.status(400).json({ success: false, message: 'Password must be at least 8 characters long and include one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&#)' });
+      if (password.length < 8) {
+        res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
+        return;
+      }
+      if (!/[a-z]/.test(password)) {
+        res.status(400).json({ success: false, message: 'Password must include at least one lowercase letter' });
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        res.status(400).json({ success: false, message: 'Password must include at least one uppercase letter' });
+        return;
+      }
+      if (!/\d/.test(password)) {
+        res.status(400).json({ success: false, message: 'Password must include at least one number' });
+        return;
+      }
+      if (!/[@$!%*?&#]/.test(password)) {
+        res.status(400).json({ success: false, message: 'Password must include at least one special character (@$!%*?&#)' });
         return;
       }
     }

@@ -19,20 +19,41 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Validate Password
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#]).{8,}$/;
-    if (!password || !passwordRegex.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must be at least 8 characters long and include one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&#)' });
-      return;
-    }
 
-    // Check if user exists
     const userExists = await User.findOne({ email });
-
     if (userExists) {
       res.status(400).json({ success: false, message: 'User already exists' });
       return;
     }
+
+
+    // Validate Password
+    if (!password) {
+      res.status(400).json({ success: false, message: 'Password is required' });
+      return;
+    }
+    if (password.length < 8) {
+      res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
+      return;
+    }
+    if (!/[a-z]/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one lowercase letter' });
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one uppercase letter' });
+      return;
+    }
+    if (!/\d/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one number' });
+      return;
+    }
+    if (!/[@$!%*?&#]/.test(password)) {
+      res.status(400).json({ success: false, message: 'Password must include at least one special character (@$!%*?&#)' });
+      return;
+    }
+
+
 
     // Create user
     const user = await User.create({

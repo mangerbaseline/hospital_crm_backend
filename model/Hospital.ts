@@ -2,13 +2,12 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IHospital extends Document {
   idn: mongoose.Types.ObjectId;
-  idnName: string;
   hospitalName: string;
   address: string;
   city: string;
   state: string;
   zip: string;
-  gpo: 'Vizient' | 'Premier' | 'HealthTrust' | 'VA';
+  gpo: string,
   competitiveProduct: string;
   teamHospital: boolean;
   magnetHospital: boolean;
@@ -25,11 +24,6 @@ const HospitalSchema: Schema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'IDN',
     required: true
-  },
-  idnName: {
-    type: String,
-    required: true,
-    trim: true
   },
   hospitalName: {
     type: String,
@@ -57,8 +51,8 @@ const HospitalSchema: Schema = new Schema({
     trim: true
   },
   gpo: {
-    type: String,
-    enum: ['Vizient', 'Premier', 'HealthTrust', 'VA'],
+    type: Schema.Types.ObjectId,
+    ref: 'GPO',
     required: true
   },
   competitiveProduct: {

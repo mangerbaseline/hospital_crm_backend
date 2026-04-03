@@ -25,7 +25,7 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
     const hospitals = await Hospital.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit).populate('idn');
 
     const total = await Hospital.countDocuments(searchQuery);
 

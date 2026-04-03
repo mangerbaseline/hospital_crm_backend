@@ -23,7 +23,7 @@ export const getIDNs = async (req: Request, res: Response): Promise<void> => {
     const idns = await IDN.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit).populate('hospitals');
 
     const total = await IDN.countDocuments(searchQuery);
 
