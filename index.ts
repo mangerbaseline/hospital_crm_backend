@@ -1,0 +1,73 @@
+import express from 'express';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import morgan from 'morgan';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+
+import hospitalRoutes from './routes/hospital.ts';
+import idnRoutes from './routes/idn.ts';
+import gpoRoutes from './routes/gpo.ts';
+import pipelineRoutes from './routes/pipeline.ts';
+import contactRoutes from './routes/contact.ts';
+import userRoutes from './routes/user.ts';
+import authRoutes from './routes/auth.ts';
+
+
+// Load environment variables
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 8000;
+
+// Middleware
+app.use(cors({
+  origin: function (origin, callback) {
+    callback(null, true); // Allow all origins
+  },
+  credentials: true
+}));
+app.use(cookieParser());
+app.use(morgan('dev'));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Connect to MongoDB
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.DATABASE!);
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    process.exit(1);
+  }
+};
+
+// Routes
+app.get('/', (req, res) => {
+  res.json({ message: 'CRM Backend API' });
+});
+
+
+app.use('/api/auth', authRoutes);
+app.use('/api/hospital', hospitalRoutes);
+app.use('/api/idn', idnRoutes);
+app.use('/api/gpo', gpoRoutes);
+app.use('/api/pipeline', pipelineRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/user', userRoutes);
+
+// Start server
+const startServer = async () => {
+  await connectDB();
+  if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  }
+};
+
+startServer().catch(console.error);
+
+export default app;
