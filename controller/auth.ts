@@ -86,10 +86,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       // Set cookie
       res.cookie("token", token, {
         httpOnly: true,       // prevents JS access (security)
-        // secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
-        // sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        secure: true,
-        sameSite: "none",
+        secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        // secure: true,
+        // sameSite: "none",
         maxAge: 10 * 60 * 60 * 1000 // 10 hours
       });
 

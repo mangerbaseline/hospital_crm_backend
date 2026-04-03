@@ -44,7 +44,6 @@ export const getGPOs = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-
 export const getGPOById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;

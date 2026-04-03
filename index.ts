@@ -20,13 +20,24 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// Middleware
+const allowedOrigins = [
+  'https://hospital-crm-frontend.vercel.app',
+  'http://localhost:3000'
+];
+
 app.use(cors({
   origin: function (origin, callback) {
-    callback(null, true); // Allow all origins
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
   },
   credentials: true
 }));
+
+
 app.use(cookieParser());
 app.use(morgan('dev'));
 
