@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Hospital from '../model/Hospital.ts';
 
 export const getHospitals = async (req: Request, res: Response): Promise<void> => {
@@ -76,9 +77,14 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
   }
 };
 
-export const createHospital = async (req: Request, res: Response): Promise<void> => {
+export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const hospital = new Hospital(req.body);
+    const hospitalData = {
+      ...req.body,
+      user: req.user?._id
+    };
+
+    const hospital = new Hospital(hospitalData);
     await hospital.save();
 
     res.status(201).json({

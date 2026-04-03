@@ -4,6 +4,7 @@ export interface IHospital extends Document {
   idn: mongoose.Types.ObjectId;
   hospitalName: string;
   address: string;
+  user: mongoose.Types.ObjectId;
   city: string;
   state: string;
   zip: string;
@@ -67,10 +68,6 @@ const HospitalSchema: Schema = new Schema({
     type: Boolean,
     required: true
   },
-  products: [{
-    type: String,
-    enum: ['HeelPOD', 'MAC System', 'ELEVATE']
-  }],
   notes: {
     type: String,
     trim: true
@@ -79,6 +76,11 @@ const HospitalSchema: Schema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Contact'
   }],
+  user: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   documents: [{
     type: String,
     trim: true

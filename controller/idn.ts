@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import IDN from '../model/Idn.ts';
 
 export const getIDNs = async (req: Request, res: Response): Promise<void> => {
@@ -75,9 +76,14 @@ export const getIDNById = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-export const createIDN = async (req: Request, res: Response): Promise<void> => {
+export const createIDN = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const idn = new IDN(req.body);
+    const idnData = {
+      ...req.body,
+      user: req.user?._id
+    };
+
+    const idn = new IDN(idnData);
     await idn.save();
 
     res.status(201).json({

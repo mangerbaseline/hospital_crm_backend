@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IDeal extends Document {
   hospital: mongoose.Types.ObjectId;
   contact?: mongoose.Types.ObjectId;
+  user: mongoose.Types.ObjectId;
   products: string[];
   currentStage: mongoose.Types.ObjectId;
   competitiveProduct?: string;
@@ -26,24 +27,23 @@ const DealSchema: Schema = new Schema({
   },
   contact: {
     type: Schema.Types.ObjectId,
-    ref: 'Contact'
+    ref: 'Contact',
+    required: true
   },
   products: [{
-    type: String,
-    enum: ['HeelPOD', 'MAC System', 'ELEVATE'],
+    type: Schema.Types.ObjectId,
+    ref: 'Product',
     required: true
   }],
-  currentStage: {
+  user: {
     type: Schema.Types.ObjectId,
-    ref: 'PipelineStage',
+    ref: 'User',
     required: true
   },
-  competitiveProduct: {
+  currentPipelineStage: {
     type: String,
-    trim: true
-  },
-  notes: {
-    type: String,
+    required: true,
+    enum: ['Demo', 'CPA', 'Committee', 'Trial', 'Pending Decision', 'Closed Won', 'Implemented'],
     trim: true
   },
   expectedValue: {
@@ -53,27 +53,9 @@ const DealSchema: Schema = new Schema({
   closeDate: {
     type: Date
   },
-  stageHistory: [{
-    stage: {
-      type: Schema.Types.ObjectId,
-      ref: 'PipelineStage',
-      required: true
-    },
-    enteredAt: {
-      type: Date,
-      required: true
-    },
-    exitedAt: {
-      type: Date
-    }
-  }]
+
 }, {
   timestamps: true
 });
-
-// Indexes for efficient querying
-DealSchema.index({ hospital: 1 });
-DealSchema.index({ currentStage: 1 });
-DealSchema.index({ 'stageHistory.stage': 1 });
 
 export default mongoose.model<IDeal>('Deal', DealSchema);

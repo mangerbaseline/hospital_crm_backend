@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Contact from '../model/Contact.ts';
 
 
@@ -78,10 +79,30 @@ export const getContactById = async (req: Request, res: Response): Promise<void>
   }
 };
 
-export const createContact = async (req: Request, res: Response): Promise<void> => {
+export const createContact = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const contactData = req.body;
-    console.log(contactData);
+    const { email, phoneNumber } = req.body;
+
+    // Check if contact with same email or phone number already exists
+    const existingContact = await Contact.findOne({
+      $or: [{ email }, { phoneNumber }]
+    });
+
+    if (existingContact) {
+      res.status(400).json({
+        success: false,
+        message: existingContact.email === email
+          ? 'Contact with this email already exists'
+          : 'Contact with this phone number already exists'
+      });
+      return;
+    }
+
+    // Associate contact with the authenticated user
+    const contactData = {
+      ...req.body,
+      user: req.user?._id
+    };
 
     const newContact = new Contact(contactData);
     await newContact.save();

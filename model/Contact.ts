@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IContact extends Document {
   name: string;
+  user: mongoose.Types.ObjectId;
   designation: string;
   hospital: mongoose.Types.ObjectId;
   phoneNumber: string;
@@ -14,7 +15,8 @@ const ContactSchema: Schema = new Schema({
   name: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    index: true
   },
   designation: {
     type: String,
@@ -29,6 +31,7 @@ const ContactSchema: Schema = new Schema({
   phoneNumber: {
     type: String,
     required: true,
+    unique: true,
     trim: true
   },
   email: {
@@ -38,6 +41,11 @@ const ContactSchema: Schema = new Schema({
     trim: true,
     lowercase: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+  },
+  user: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   }
 }, {
   timestamps: true

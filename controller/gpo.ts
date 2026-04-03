@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import GPOModel from '../model/Gpo.ts';
 
 export const getGPOs = async (req: Request, res: Response): Promise<void> => {
@@ -75,9 +76,14 @@ export const getGPOById = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-export const createGPO = async (req: Request, res: Response): Promise<void> => {
+export const createGPO = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const gpo = new GPOModel(req.body);
+    const gpoData = {
+      ...req.body,
+      user: req.user?._id
+    };
+
+    const gpo = new GPOModel(gpoData);
     await gpo.save();
 
     res.status(201).json({

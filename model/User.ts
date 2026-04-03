@@ -31,20 +31,11 @@ const UserSchema = new Schema<IUser>(
       unique: true,
       trim: true,
       lowercase: true,
-      match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email'],
     },
     password: {
       type: String,
       required: [true, 'Password is required'],
       select: false,
-      minlength: [8, 'Password must be at least 8 characters long'],
-      validate: {
-        validator: function (v: string) {
-          // At least 1 lowercase, 1 uppercase, 1 digit, and one special character
-          return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])/.test(v);
-        },
-        message: 'Password must include at least one uppercase letter, one lowercase letter, one number and one special character (@$!%*?&#)'
-      }
     },
     role: {
       type: String,

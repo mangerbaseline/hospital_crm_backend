@@ -4,6 +4,7 @@ export interface GPO extends Document {
   name: string;
   hospitals: mongoose.Types.ObjectId[];
   expectedARR: number;
+  user: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +20,11 @@ const GPOSchema: Schema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Hospital'
   }],
+  user: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   expectedARR: {
     type: Number,
     required: true,

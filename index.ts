@@ -12,6 +12,8 @@ import pipelineRoutes from './routes/pipeline.ts';
 import contactRoutes from './routes/contact.ts';
 import userRoutes from './routes/user.ts';
 import authRoutes from './routes/auth.ts';
+import productRoutes from './routes/product.ts';
+
 
 
 // Load environment variables
@@ -68,6 +70,8 @@ app.use('/api/gpo', gpoRoutes);
 app.use('/api/pipeline', pipelineRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/product', productRoutes);
+
 
 // Start server
 const startServer = async () => {
