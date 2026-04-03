@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../model/User.ts';
+import { validatePassword, validateEmail } from '../helper/user.ts';
 
 const generateToken = (id: string): string => {
   return jwt.sign({ id }, process.env.JWT_SECRET!, {
@@ -12,13 +13,11 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Validate Email
-    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-    if (!email || !emailRegex.test(email)) {
-      res.status(400).json({ success: false, message: 'Please enter a valid email' });
+    const emailError = validateEmail(email);
+    if (emailError) {
+      res.status(400).json({ success: false, message: emailError });
       return;
     }
-
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -26,30 +25,9 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-
-    // Validate Password
-    if (!password) {
-      res.status(400).json({ success: false, message: 'Password is required' });
-      return;
-    }
-    if (password.length < 8) {
-      res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one lowercase letter' });
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one uppercase letter' });
-      return;
-    }
-    if (!/\d/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one number' });
-      return;
-    }
-    if (!/[@$!%*?&#]/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one special character (@$!%*?&#)' });
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      res.status(400).json({ success: false, message: passwordError });
       return;
     }
 
@@ -69,8 +47,8 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       // Set cookie
       res.cookie("token", token, {
         httpOnly: true,       // prevents JS access (security)
-        secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-site in prod
+        secure: true,
+        sameSite: 'none',
         maxAge: 10 * 60 * 60 * 1000 // 10 hours
       });
 

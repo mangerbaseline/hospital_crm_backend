@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import User from '../model/User.ts';
+import { validatePassword, validateEmail } from '../helper/user.ts';
 
 
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
@@ -45,7 +46,6 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -76,13 +76,11 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
   try {
     const { email, password } = req.body;
 
-    // Validate Email
-    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-    if (!email || !emailRegex.test(email)) {
-      res.status(400).json({ success: false, message: 'Please enter a valid email' });
+    const emailError = validateEmail(email);
+    if (emailError) {
+      res.status(400).json({ success: false, message: emailError });
       return;
     }
-
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -90,33 +88,12 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      res.status(400).json({ success: false, message: passwordError });
+      return;
+    }
 
-
-    // Validate Password
-    if (!password) {
-      res.status(400).json({ success: false, message: 'Password is required' });
-      return;
-    }
-    if (password.length < 8) {
-      res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one lowercase letter' });
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one uppercase letter' });
-      return;
-    }
-    if (!/\d/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one number' });
-      return;
-    }
-    if (!/[@$!%*?&#]/.test(password)) {
-      res.status(400).json({ success: false, message: 'Password must include at least one special character (@$!%*?&#)' });
-      return;
-    }
 
     const user = new User(req.body);
     await user.save();
@@ -202,7 +179,6 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-
 export const deleteUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -228,4 +204,3 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
     });
   }
 };
-
