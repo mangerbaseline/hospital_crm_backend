@@ -3,18 +3,42 @@ import GPOModel from '../model/Gpo.ts';
 
 export const getGPOs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const gpos = await GPOModel.find().sort({ createdAt: -1 });
-    const count = await GPOModel.countDocuments();
+    // Query params
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    const skip = (page - 1) * limit;
+
+    // Search query (adjust fields as per your schema)
+    const searchQuery = search
+      ? {
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+        ]
+      }
+      : {};
+
+    // Fetch GPOs
+    const gpos = await GPOModel.find(searchQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await GPOModel.countDocuments(searchQuery);
 
     res.status(200).json({
       success: true,
-      count,
+      page,
+      limit,
+      totalGPOs: total,
+      totalPages: Math.ceil(total / limit),
       data: gpos
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Failed to retrieve GPOs',
+      message: "Failed to retrieve GPOs",
       error: error.message
     });
   }
@@ -74,10 +98,10 @@ export const deleteGPO = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     if (typeof id !== 'string') {
-        res.status(400).json({ success: false, message: 'Invalid ID' });
-        return;
+      res.status(400).json({ success: false, message: 'Invalid ID' });
+      return;
     }
-    
+
     const gpo = await GPOModel.findByIdAndDelete(id);
 
     if (!gpo) {

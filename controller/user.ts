@@ -1,24 +1,50 @@
 import type { Request, Response } from 'express';
 import User from '../model/User.ts';
 
+
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const users = await User.find().sort({ createdAt: -1 });
-    const count = await User.countDocuments();
+    // Query params
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    const skip = (page - 1) * limit;
+
+    const searchQuery = search
+      ? {
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } }
+        ]
+      }
+      : {};
+
+    // Fetch users
+    const users = await User.find(searchQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await User.countDocuments(searchQuery);
 
     res.status(200).json({
       success: true,
-      count,
+      page,
+      limit,
+      totalUsers: total,
+      totalPages: Math.ceil(total / limit),
       data: users
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Failed to retrieve users',
+      message: "Failed to retrieve users",
       error: error.message
     });
   }
 };
+
 
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
   try {

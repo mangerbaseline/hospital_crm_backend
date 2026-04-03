@@ -24,10 +24,10 @@ export const getPipelineById = async (req: Request, res: Response): Promise<void
   try {
     const { id } = req.params;
     if (typeof id !== 'string') {
-        res.status(400).json({ success: false, message: 'Invalid ID' });
-        return;
+      res.status(400).json({ success: false, message: 'Invalid ID' });
+      return;
     }
-    
+
     const pipeline = await Pipeline.findById(id);
 
     if (!pipeline) {
@@ -73,10 +73,10 @@ export const deletePipeline = async (req: Request, res: Response): Promise<void>
   try {
     const { id } = req.params;
     if (typeof id !== 'string') {
-        res.status(400).json({ success: false, message: 'Invalid ID' });
-        return;
+      res.status(400).json({ success: false, message: 'Invalid ID' });
+      return;
     }
-    
+
     const pipeline = await Pipeline.findByIdAndDelete(id);
 
     if (!pipeline) {

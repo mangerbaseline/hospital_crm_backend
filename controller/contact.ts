@@ -1,20 +1,47 @@
 import type { Request, Response } from 'express';
 import Contact from '../model/Contact.ts';
 
+
 export const getContacts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const contacts = await Contact.find().sort({ createdAt: -1 }).populate('hospital');
-    const count = await Contact.countDocuments();
+    // Query params from frontend
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    const skip = (page - 1) * limit;
+
+    // Search condition (you can customize fields)
+    const searchQuery = search
+      ? {
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ]
+      }
+      : {};
+
+    // Fetch data
+    const contacts = await Contact.find(searchQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("hospital");
+
+    const total = await Contact.countDocuments(searchQuery);
 
     res.status(200).json({
       success: true,
-      count,
+      page,
+      limit,
+      totalContacts: total,
+      totalPages: Math.ceil(total / limit),
       data: contacts
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Failed to retrieve contacts',
+      message: "Failed to retrieve contacts",
       error: error.message
     });
   }
