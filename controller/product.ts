@@ -89,6 +89,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
 export const updateProduct = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
+        console.log(req.body)
         const updatedProduct = await Product.findByIdAndUpdate(
             id,
             req.body,
