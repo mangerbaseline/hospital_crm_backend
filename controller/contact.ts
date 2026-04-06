@@ -267,6 +267,7 @@ export const createContact = async (req: AuthRequest, res: Response): Promise<vo
 
     const newContact = new Contact(contactData);
     await newContact.save();
+    await newContact.populate('hospital');
 
     res.status(201).json({
       success: true,

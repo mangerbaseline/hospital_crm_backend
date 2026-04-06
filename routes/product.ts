@@ -4,13 +4,12 @@ import { protect, authorizeRoles } from '../middleware/authMiddleware.ts';
 import { UserRole } from '../model/User.ts';
 
 const router = express.Router();
-
 router.use(protect);
 
-router.get('/all-products', getProducts);
-router.get('/:id', getProductById);
-router.post('/create', createProduct);
-router.put('/:id', updateProduct);
-router.delete('/:id', deleteProduct);
+router.get('/all-products', authorizeRoles(UserRole.ADMIN), getProducts);
+router.get('/:id', authorizeRoles(UserRole.ADMIN), getProductById);
+router.post('/create', authorizeRoles(UserRole.ADMIN), createProduct);
+router.put('/:id', authorizeRoles(UserRole.ADMIN), updateProduct);
+router.delete('/:id', authorizeRoles(UserRole.ADMIN), deleteProduct);
 
 export default router;
