@@ -1,7 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IContact extends Document {
-  name: string;
+  firstName: string;
+  lastName: string;
   user: mongoose.Types.ObjectId;
   designation: string;
   hospital: mongoose.Types.ObjectId;
@@ -13,7 +14,13 @@ export interface IContact extends Document {
 }
 
 const ContactSchema: Schema = new Schema({
-  name: {
+  firstName: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true
+  },
+  lastName: {
     type: String,
     required: true,
     trim: true,

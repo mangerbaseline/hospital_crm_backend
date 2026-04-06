@@ -8,7 +8,7 @@ export interface IHospital extends Document {
   city: string;
   state: string;
   zip: string;
-  gpo: string,
+  gpo: mongoose.Types.ObjectId,
   competitiveProduct: string;
   teamHospital: boolean;
   magnetHospital: boolean;

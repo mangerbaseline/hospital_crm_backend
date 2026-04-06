@@ -16,7 +16,8 @@ import Contact from '../model/Contact.ts';
 //     const searchQuery = search
 //       ? {
 //         $or: [
-//           { name: { $regex: search, $options: "i" } },
+//           { firstName: { $regex: search, $options: "i" } },
+//           { lastName: { $regex: search, $options: "i" } },
 //           { email: { $regex: search, $options: "i" } },
 //         ]
 //       }
@@ -65,7 +66,8 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
     // Add search filter
     if (search) {
       searchQuery.$or = [
-        { name: { $regex: search, $options: "i" } },
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
       ];
     }
