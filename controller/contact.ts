@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Contact from '../model/Contact.ts';
+import mongoose from "mongoose";
 
 
 // export const getContacts = async (req: Request, res: Response): Promise<void> => {
@@ -51,45 +52,140 @@ import Contact from '../model/Contact.ts';
 
 
 
+// export const getContacts = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     const page = parseInt(req.query.page as string) || 1;
+//     const limit = parseInt(req.query.limit as string) || 10;
+//     const search = (req.query.search as string) || "";
+//     const userId = req.query.userId as string; // <-- get userId
+
+//     const skip = (page - 1) * limit;
+
+//     // Base search query
+//     let searchQuery: any = {};
+
+//     // Add search filter
+//     if (search) {
+//       searchQuery.$or = [
+//         { firstName: { $regex: search, $options: "i" } },
+//         { lastName: { $regex: search, $options: "i" } },
+//         { email: { $regex: search, $options: "i" } },
+//         { designation: { $regex: search, $options: "i" } },
+//         { hospital: { $regex: search, $options: "i" } },
+//       ];
+//     }
+
+//     // Add user filter ONLY if provided
+//     if (userId) {
+//       searchQuery.user = userId; // or createdBy depending on your schema
+//     }
+
+//     const contacts = await Contact.find(searchQuery)
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit)
+//       .populate({
+//         path: "hospital",
+//         populate: [
+//           { path: "idn" },
+//           { path: "gpo" }
+//         ]
+//       });
+
+//     const total = await Contact.countDocuments(searchQuery);
+
+//     res.status(200).json({
+//       success: true,
+//       page,
+//       limit,
+//       totalContacts: total,
+//       totalPages: Math.ceil(total / limit),
+//       data: contacts
+//     });
+
+//   } catch (error: any) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to retrieve contacts",
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
 export const getContacts = async (req: Request, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
-    const userId = req.query.userId as string; // <-- get userId
+    const userId = req.query.userId as string;
 
     const skip = (page - 1) * limit;
+    const matchStage: any = {};
 
-    // Base search query
-    let searchQuery: any = {};
+    if (userId) {
+      matchStage.user = new mongoose.Types.ObjectId(userId);
+    }
 
-    // Add search filter
     if (search) {
-      searchQuery.$or = [
+      matchStage.$or = [
         { firstName: { $regex: search, $options: "i" } },
         { lastName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
+        { designation: { $regex: search, $options: "i" } },
+        { "hospital.hospitalName": { $regex: search, $options: "i" } }
       ];
     }
 
-    // Add user filter ONLY if provided
-    if (userId) {
-      searchQuery.user = userId; // or createdBy depending on your schema
-    }
+    const pipeline: any[] = [
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "hospital",
+          foreignField: "_id",
+          as: "hospital"
+        }
+      },
+      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "idns",
+          localField: "hospital.idn",
+          foreignField: "_id",
+          as: "hospital.idn"
+        }
+      },
+      { $unwind: { path: "$hospital.idn", preserveNullAndEmptyArrays: true } },
 
-    const contacts = await Contact.find(searchQuery)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate({
-        path: "hospital",
-        populate: [
-          { path: "idn" },
-          { path: "gpo" }
-        ]
-      });
+      // 🔗 Join GPO (ONLY for populate, not search)
+      {
+        $lookup: {
+          from: "gpos",
+          localField: "hospital.gpo",
+          foreignField: "_id",
+          as: "hospital.gpo"
+        }
+      },
+      { $unwind: { path: "$hospital.gpo", preserveNullAndEmptyArrays: true } },
+      { $match: matchStage },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          totalCount: [
+            { $count: "total" }
+          ]
+        }
+      }
+    ];
 
-    const total = await Contact.countDocuments(searchQuery);
+    const result = await Contact.aggregate(pipeline);
+    const contacts = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.total || 0;
 
     res.status(200).json({
       success: true,
@@ -108,6 +204,8 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
     });
   }
 };
+
+
 
 
 
