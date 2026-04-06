@@ -12,14 +12,10 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
     const skip = (page - 1) * limit;
 
     const searchQuery = (req.query.search as string) || "";
-    
-    // For search, we might want to search by hospital name or something similar
-    // but the deal model only stores the ObjectId. We can search by ID if provided or just return all and filtering by other criteria.
-    // For now, let's keep it simple or expand it if needed.
+
     const query: any = {};
     if (searchQuery) {
-        // Example: search by currentPipelineStage
-        query.currentPipelineStage = { $regex: searchQuery, $options: "i" };
+      query.currentPipelineStage = { $regex: searchQuery, $options: "i" };
     }
 
     const deals = await Deal.find(query)

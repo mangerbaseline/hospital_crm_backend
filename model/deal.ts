@@ -4,17 +4,19 @@ export interface IDeal extends Document {
   hospital: mongoose.Types.ObjectId;
   contact?: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
-  products: string[];
+  gpo: mongoose.Types.ObjectId;
+  idn: mongoose.Types.ObjectId;
+  products: mongoose.Types.ObjectId[];
   currentStage: mongoose.Types.ObjectId;
+  teamHospital: boolean;
+  magnetHospital: boolean;
   competitiveProduct?: string;
+  city: string;
+  state: string;
+  zip: string;
   notes?: string;
   expectedValue?: number;
   closeDate?: Date;
-  stageHistory: {
-    stage: mongoose.Types.ObjectId;
-    enteredAt: Date;
-    exitedAt?: Date;
-  }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,16 +27,41 @@ const DealSchema: Schema = new Schema({
     ref: 'Hospital',
     required: true
   },
+  idn: {
+    type: Schema.Types.ObjectId,
+    ref: 'IDN',
+    required: true
+  },
+  gpo: {
+    type: Schema.Types.ObjectId,
+    ref: 'GPO',
+    required: true
+  },
   contact: {
     type: Schema.Types.ObjectId,
     ref: 'Contact',
     required: true
   },
-  products: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Product',
+  products: [
+    {
+      product: { type: Schema.Types.ObjectId, ref: "Product" },
+      dealAmount: Number,
+      stage: String,
+      expectedCloseDate: Date
+    }
+  ],
+  competitiveProduct: {
+    type: String,
+    trim: true
+  },
+  teamHospital: {
+    type: Boolean,
     required: true
-  }],
+  },
+  magnetHospital: {
+    type: Boolean,
+    required: true
+  },
   user: {
     type: Schema.Types.ObjectId,
     ref: 'User',

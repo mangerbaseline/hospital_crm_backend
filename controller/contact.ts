@@ -81,7 +81,13 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate("hospital");
+      .populate({
+        path: "hospital",
+        populate: [
+          { path: "idn" },
+          { path: "gpo" }
+        ]
+      });
 
     const total = await Contact.countDocuments(searchQuery);
 
