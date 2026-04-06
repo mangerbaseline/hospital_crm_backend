@@ -9,8 +9,8 @@ router.use(protect);
 
 router.get('/all-idns', getIDNs);
 router.get('/:id', getIDNById);
-router.post('/create', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), createIDN);
-router.put('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), updateIDN);
-router.delete('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), deleteIDN);
+router.post('/create', createIDN);
+router.put('/:id', updateIDN);
+router.delete('/:id', deleteIDN);
 
 export default router;

@@ -13,6 +13,7 @@ import contactRoutes from './routes/contact.ts';
 import userRoutes from './routes/user.ts';
 import authRoutes from './routes/auth.ts';
 import productRoutes from './routes/product.ts';
+import dealRoutes from './routes/deal.ts';
 
 
 
@@ -71,6 +72,7 @@ app.use('/api/pipeline', pipelineRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/product', productRoutes);
+app.use('/api/deal', dealRoutes);
 
 
 // Start server

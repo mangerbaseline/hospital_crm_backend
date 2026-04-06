@@ -26,6 +26,20 @@ const HospitalSchema: Schema = new Schema({
     ref: 'IDN',
     required: true
   },
+  gpo: {
+    type: Schema.Types.ObjectId,
+    ref: 'GPO',
+    required: true
+  },
+  contacts: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Contact'
+  }],
+  user: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   hospitalName: {
     type: String,
     required: true,
@@ -51,11 +65,6 @@ const HospitalSchema: Schema = new Schema({
     required: true,
     trim: true
   },
-  gpo: {
-    type: Schema.Types.ObjectId,
-    ref: 'GPO',
-    required: true
-  },
   competitiveProduct: {
     type: String,
     trim: true
@@ -71,15 +80,6 @@ const HospitalSchema: Schema = new Schema({
   notes: {
     type: String,
     trim: true
-  },
-  contacts: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Contact'
-  }],
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
   },
   documents: [{
     type: String,

@@ -3,26 +3,78 @@ import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Contact from '../model/Contact.ts';
 
 
+// export const getContacts = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     // Query params from frontend
+//     const page = parseInt(req.query.page as string) || 1;
+//     const limit = parseInt(req.query.limit as string) || 10;
+//     const search = (req.query.search as string) || "";
+
+//     const skip = (page - 1) * limit;
+
+//     // Search condition (you can customize fields)
+//     const searchQuery = search
+//       ? {
+//         $or: [
+//           { name: { $regex: search, $options: "i" } },
+//           { email: { $regex: search, $options: "i" } },
+//         ]
+//       }
+//       : {};
+
+//     // Fetch data
+//     const contacts = await Contact.find(searchQuery)
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit)
+//       .populate("hospital");
+
+//     const total = await Contact.countDocuments(searchQuery);
+
+//     res.status(200).json({
+//       success: true,
+//       page,
+//       limit,
+//       totalContacts: total,
+//       totalPages: Math.ceil(total / limit),
+//       data: contacts
+//     });
+//   } catch (error: any) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to retrieve contacts",
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
 export const getContacts = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Query params from frontend
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
+    const userId = req.query.userId as string; // <-- get userId
 
     const skip = (page - 1) * limit;
 
-    // Search condition (you can customize fields)
-    const searchQuery = search
-      ? {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } },
-        ]
-      }
-      : {};
+    // Base search query
+    let searchQuery: any = {};
 
-    // Fetch data
+    // Add search filter
+    if (search) {
+      searchQuery.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Add user filter ONLY if provided
+    if (userId) {
+      searchQuery.user = userId; // or createdBy depending on your schema
+    }
+
     const contacts = await Contact.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -39,6 +91,7 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
       totalPages: Math.ceil(total / limit),
       data: contacts
     });
+
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -47,6 +100,8 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
     });
   }
 };
+
+
 
 export const getContactById = async (req: Request, res: Response): Promise<void> => {
   try {

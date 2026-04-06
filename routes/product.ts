@@ -9,8 +9,8 @@ router.use(protect);
 
 router.get('/all-products', getProducts);
 router.get('/:id', getProductById);
-router.post('/create', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), createProduct);
-router.put('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), updateProduct);
-router.delete('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), deleteProduct);
+router.post('/create', createProduct);
+router.put('/:id', updateProduct);
+router.delete('/:id', deleteProduct);
 
 export default router;

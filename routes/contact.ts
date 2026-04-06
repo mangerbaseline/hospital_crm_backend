@@ -9,8 +9,8 @@ router.use(protect);
 
 router.get('/all-contacts', getContacts);
 router.get('/:id', getContactById);
-router.post('/create', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), createContact);
-router.put('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), updateContact);
-router.delete('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), deleteContact);
+router.post('/create', createContact);
+router.put('/:id', updateContact);
+router.delete('/:id', deleteContact);
 
 export default router;

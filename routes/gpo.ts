@@ -10,8 +10,8 @@ router.use(protect);
 
 router.get('/all-gpos', getGPOs);
 router.get('/:id', getGPOById);
-router.post('/create', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), createGPO);
-router.put('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), updateGPO);
-router.delete('/:id', authorizeRoles(UserRole.EXECUTIVE, UserRole.ADMIN), deleteGPO);
+router.post('/create', createGPO);
+router.put('/:id', updateGPO);
+router.delete('/:id', deleteGPO);
 
 export default router;

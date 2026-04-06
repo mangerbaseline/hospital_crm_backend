@@ -7,6 +7,7 @@ export interface IContact extends Document {
   hospital: mongoose.Types.ObjectId;
   phoneNumber: string;
   email: string;
+  isPrimary: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +47,10 @@ const ContactSchema: Schema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  isPrimary: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
