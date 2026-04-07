@@ -15,6 +15,7 @@ export interface IDeal extends Document {
   gpo: mongoose.Types.ObjectId;
   idn: mongoose.Types.ObjectId;
   products: IDealProduct[];
+  notes: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -60,6 +61,10 @@ const DealSchema: Schema = new Schema({
     ref: 'User',
     required: true
   },
+  notes: {
+    type: String,
+    trim: true
+  }
 }, {
   timestamps: true
 });
