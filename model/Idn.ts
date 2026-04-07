@@ -25,11 +25,11 @@ const IDNSchema: Schema = new Schema({
     ref: 'User',
     required: true
   },
-  expectedARR: {
-    type: Number,
-    required: true,
-    min: 0
-  }
+  // expectedARR: {
+  //   type: Number,
+  //   required: true,
+  //   min: 0
+  // }
 }, {
   timestamps: true
 });
