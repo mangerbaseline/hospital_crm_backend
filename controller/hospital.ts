@@ -4,31 +4,82 @@ import Hospital from '../model/Hospital.ts';
 import GPO from '../model/Gpo.ts';
 import IDN from '../model/Idn.ts';
 
+// export const getHospitals = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     // Query params
+//     const page = parseInt(req.query.page as string) || 1;
+//     const limit = parseInt(req.query.limit as string) || 10;
+//     const search = (req.query.search as string) || "";
+
+//     const skip = (page - 1) * limit;
+
+//     // Search query (adjust fields based on your schema)
+//     const searchQuery = search
+//       ? {
+//         $or: [
+//           { hospitalName: { $regex: search, $options: "i" } },
+//           // { address: { $regex: search, $options: "i" } },
+//           { city: { $regex: search, $options: "i" } }
+//         ]
+//       }
+//       : {};
+
+//     // Fetch hospitals
+//     const hospitals = await Hospital.find(searchQuery)
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit).populate('idn');
+
+//     const total = await Hospital.countDocuments(searchQuery);
+
+//     res.status(200).json({
+//       success: true,
+//       page,
+//       limit,
+//       totalHospitals: total,
+//       totalPages: Math.ceil(total / limit),
+//       data: hospitals
+//     });
+//   } catch (error: any) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to retrieve hospitals",
+//       error: error.message
+//     });
+//   }
+// };
+
+
 export const getHospitals = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Query params
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
+    const idn = req.query.idn as string; // 👈 NEW
 
     const skip = (page - 1) * limit;
 
-    // Search query (adjust fields based on your schema)
-    const searchQuery = search
-      ? {
-        $or: [
-          { hospitalName: { $regex: search, $options: "i" } },
-          // { address: { $regex: search, $options: "i" } },
-          { city: { $regex: search, $options: "i" } }
-        ]
-      }
-      : {};
+    // Base search query
+    let searchQuery: any = {};
 
-    // Fetch hospitals
+    // Search filter
+    if (search) {
+      searchQuery.$or = [
+        { hospitalName: { $regex: search, $options: "i" } },
+        { city: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    // IDN filter
+    if (idn) {
+      searchQuery.idn = idn; // 👈 assuming idn is ObjectId ref
+    }
+
     const hospitals = await Hospital.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit).populate('idn');
+      .limit(limit)
+      .populate('idn');
 
     const total = await Hospital.countDocuments(searchQuery);
 
@@ -40,6 +91,7 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
       totalPages: Math.ceil(total / limit),
       data: hospitals
     });
+
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -48,6 +100,13 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
     });
   }
 };
+
+
+
+
+
+
+
 
 export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
   try {
