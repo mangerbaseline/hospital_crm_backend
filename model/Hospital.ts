@@ -16,6 +16,9 @@ export interface IHospital extends Document {
   notes: string;
   contacts: mongoose.Types.ObjectId[];
   documents: string[];
+  bedsWithMac: number;
+  ICUBeds: number;
+  location: string;
   createdAt: Date;
   updatedAt: Date;
 }
