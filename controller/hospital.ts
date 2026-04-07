@@ -115,7 +115,9 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
       res.status(400).json({ success: false, message: 'Invalid ID' });
       return;
     }
-    const hospital = await Hospital.findById(id);
+    const hospital = await Hospital.findById(id)
+      .populate("idn", 'name')
+      .populate("gpo", 'name');
 
     if (!hospital) {
       res.status(404).json({
