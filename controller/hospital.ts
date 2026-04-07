@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Hospital from '../model/Hospital.ts';
+import GPO from '../model/Gpo.ts';
+import IDN from '../model/Idn.ts';
 
 export const getHospitals = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -77,6 +79,31 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
   }
 };
 
+// export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
+//   try {
+//     const hospitalData = {
+//       ...req.body,
+//       user: req.user?._id
+//     };
+
+//     const hospital = new Hospital(hospitalData);
+//     await hospital.save();
+
+//     res.status(201).json({
+//       success: true,
+//       data: hospital
+//     });
+//   } catch (error: any) {
+//     res.status(400).json({
+//       success: false,
+//       message: 'Failed to create hospital',
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
 export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const hospitalData = {
@@ -87,10 +114,20 @@ export const createHospital = async (req: AuthRequest, res: Response): Promise<v
     const hospital = new Hospital(hospitalData);
     await hospital.save();
 
+    if (hospital.gpo) {
+      await GPO.findByIdAndUpdate(hospital.gpo, { $addToSet: { hospitals: hospital._id } }
+      );
+    }
+
+    if (hospital.idn) {
+      await IDN.findByIdAndUpdate(hospital.idn, { $addToSet: { hospitals: hospital._id } });
+    }
+
     res.status(201).json({
       success: true,
       data: hospital
     });
+
   } catch (error: any) {
     res.status(400).json({
       success: false,
@@ -100,26 +137,85 @@ export const createHospital = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+
+
+
+
+
+
+
+// export const deleteHospital = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     const { id } = req.params;
+//     if (typeof id !== 'string') {
+//       res.status(400).json({ success: false, message: 'Invalid ID' });
+//       return;
+//     }
+
+//     const hospital = await Hospital.findByIdAndDelete(id);
+
+//     if (!hospital) {
+//       res.status(404).json({ success: false, message: 'Hospital not found' });
+//       return;
+//     }
+
+//     res.status(200).json({ success: true, message: 'Hospital deleted successfully' });
+//   } catch (error: any) {
+//     res.status(500).json({ success: false, message: 'Error deleting hospital', error: error.message });
+//   }
+// };
+
+
 export const deleteHospital = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+
     if (typeof id !== 'string') {
       res.status(400).json({ success: false, message: 'Invalid ID' });
       return;
     }
 
-    const hospital = await Hospital.findByIdAndDelete(id);
+    const hospital = await Hospital.findById(id);
 
     if (!hospital) {
       res.status(404).json({ success: false, message: 'Hospital not found' });
       return;
     }
 
-    res.status(200).json({ success: true, message: 'Hospital deleted successfully' });
+    if (hospital.gpo) {
+      await GPO.findByIdAndUpdate(
+        hospital.gpo,
+        { $pull: { hospitals: hospital._id } }
+      );
+    }
+
+    if (hospital.idn) {
+      await IDN.findByIdAndUpdate(
+        hospital.idn,
+        { $pull: { hospitals: hospital._id } }
+      );
+    }
+
+    await Hospital.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Hospital deleted successfully'
+    });
+
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Error deleting hospital', error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting hospital',
+      error: error.message
+    });
   }
 };
+
+
+
+
+
 
 export const updateHospital = async (req: Request, res: Response): Promise<void> => {
   try {

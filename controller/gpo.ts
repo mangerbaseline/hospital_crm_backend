@@ -25,7 +25,7 @@ export const getGPOs = async (req: Request, res: Response): Promise<void> => {
     const gpos = await GPOModel.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit).select('name')
+      .limit(limit).select("name");
 
     const total = await GPOModel.countDocuments(searchQuery);
 
@@ -154,21 +154,18 @@ export const updateGPO = async (req: Request, res: Response): Promise<void> => {
 };
 
 
-
+/*
 export const getGPOsWithDeals = async (req: Request, res: Response): Promise<void> => {
   try {
     const search = (req.query.search as string) || "";
+    const searchQuery = search ? { name: { $regex: search, $options: "i" }, } : {};
 
-    const searchQuery = search
-      ? {
-        name: { $regex: search, $options: "i" },
-      }
-      : {};
 
     // 1. Get GPOs with hospitals
     const gpos = await GPOModel.find(searchQuery)
       .populate("hospitals")
       .sort({ createdAt: -1 });
+
 
     // 2. Extract all hospital IDs
     const hospitalIds = gpos.flatMap((gpo: any) =>
@@ -212,3 +209,4 @@ export const getGPOsWithDeals = async (req: Request, res: Response): Promise<voi
     });
   }
 };
+*/

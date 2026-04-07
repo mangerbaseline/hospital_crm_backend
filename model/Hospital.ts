@@ -77,14 +77,20 @@ const HospitalSchema: Schema = new Schema({
     type: Boolean,
     required: true
   },
-  notes: {
-    type: String,
-    trim: true
-  },
   documents: [{
     type: String,
     trim: true
-  }]
+  }],
+  bedsWithMac: {
+    type: Number,
+  },
+  ICUBeds: {
+    type: Number,
+  },
+  location: {
+    type: String,
+    trim: true
+  }
 }, {
   timestamps: true
 });
