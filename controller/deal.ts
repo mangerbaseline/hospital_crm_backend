@@ -5,6 +5,7 @@ import Deal from '../model/deal.ts';
 /**
  * Fetch all deals with pagination and searching
  */
+
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;

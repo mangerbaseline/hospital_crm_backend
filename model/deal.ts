@@ -1,13 +1,20 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface IDealProduct {
+  product: mongoose.Types.ObjectId;
+  dealAmount?: number;
+  stage?: string;
+  expectedCloseDate?: Date;
+}
+
+
 export interface IDeal extends Document {
   hospital: mongoose.Types.ObjectId;
   contact?: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
   gpo: mongoose.Types.ObjectId;
   idn: mongoose.Types.ObjectId;
-  products: mongoose.Types.ObjectId[];
-  currentStage: mongoose.Types.ObjectId;
+  products: IDealProduct[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,7 +39,19 @@ const DealSchema: Schema = new Schema({
     {
       product: { type: Schema.Types.ObjectId, ref: "Product" },
       dealAmount: Number,
-      stage: String,
+      stage: {
+        type: String,
+        enum: [
+          "Demo",
+          "CPA",
+          "Committee",
+          "Trial",
+          "Pending Decision",
+          "Closed Won",
+          "Implemented"
+        ],
+        default: "Demo" // optional
+      },
       expectedCloseDate: Date
     }
   ],
@@ -40,12 +59,6 @@ const DealSchema: Schema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
-  },
-  currentPipelineStage: {
-    type: String,
-    required: true,
-    enum: ['Demo', 'CPA', 'Committee', 'Trial', 'Pending Decision', 'Closed Won', 'Implemented'],
-    trim: true
   },
 }, {
   timestamps: true
