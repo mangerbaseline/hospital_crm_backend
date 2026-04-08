@@ -336,3 +336,25 @@ export const getHospitalsByIDN = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+
+
+
+
+
+
+export const getAllHospitalsDeals = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hospitals = await Hospital.find()
+      .populate('gpo idn')
+
+    res.status(200).json({
+      success: true,
+      data: hospitals
+    });
+
+  } catch (error) {
+    console.error('Error fetching hospitalsDeals:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
