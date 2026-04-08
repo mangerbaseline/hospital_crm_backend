@@ -173,7 +173,7 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
       .select("products") // only products
       .populate({
         path: "products.product",
-        select: "name Marketprice"
+        select: "name"
       });
 
     // 3. Attach deals to hospital
@@ -346,127 +346,157 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
     const skip = (page - 1) * limit;
     const search = (req.query.search as string) || "";
 
-    const userId = req.query.userId as string; // may be undefined
+    const userId = req.query.userId as string;
 
-    // ✅ Convert only if exists
     const filterUserId = userId
       ? new mongoose.Types.ObjectId(userId)
       : null;
 
     const pipeline: any[] = [
 
-      // ✅ USER FILTER (only when provided)
-      ...(filterUserId
-        ? [{
-          $match: { user: filterUserId }
-        }]
-        : []),
+      // ✅ USER FILTER
+      ...(filterUserId ? [{ $match: { user: filterUserId } }] : []),
 
       // 1. Lookup Deals
       {
         $lookup: {
-          from: 'deals',
-          let: { hospitalId: '$_id' },
+          from: "deals",
+          let: { hospitalId: "$_id" },
           pipeline: [
             {
               $match: {
-                $expr: { $eq: ['$hospital', '$$hospitalId'] }
+                $expr: { $eq: ["$hospital", "$$hospitalId"] }
               }
             },
             {
               $project: { products: 1 }
             }
           ],
-          as: 'deals'
+          as: "deals"
+        }
+      },
+
+      // ✅ FIX: Extract ALL product IDs (flatten nested arrays)
+      {
+        $addFields: {
+          allProductIds: {
+            $reduce: {
+              input: "$deals",
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  "$$value",
+                  {
+                    $map: {
+                      input: { $ifNull: ["$$this.products", []] },
+                      as: "p",
+                      in: "$$p.product"
+                    }
+                  }
+                ]
+              }
+            }
+          }
         }
       },
 
       // 2. Lookup IDN
       {
         $lookup: {
-          from: 'idns',
-          let: { idnId: '$idn' },
+          from: "idns",
+          let: { idnId: "$idn" },
           pipeline: [
             {
               $match: {
-                $expr: { $eq: ['$_id', '$$idnId'] }
+                $expr: { $eq: ["$_id", "$$idnId"] }
               }
             },
             { $project: { name: 1, user: 1 } }
           ],
-          as: 'idn'
+          as: "idn"
         }
       },
-      { $unwind: { path: '$idn', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
 
       // 3. Lookup GPO
       {
         $lookup: {
-          from: 'gpos',
-          let: { gpoId: '$gpo' },
+          from: "gpos",
+          let: { gpoId: "$gpo" },
           pipeline: [
             {
               $match: {
-                $expr: { $eq: ['$_id', '$$gpoId'] }
+                $expr: { $eq: ["$_id", "$$gpoId"] }
               }
             },
             { $project: { name: 1, user: 1 } }
           ],
-          as: 'gpo'
+          as: "gpo"
         }
       },
-      { $unwind: { path: '$gpo', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
 
-      // 4. Populate products
+      // 4. Lookup Products using flattened IDs
       {
         $lookup: {
-          from: 'products',
-          let: { productIds: '$deals.products.product' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $in: ['$_id', { $ifNull: ['$$productIds', []] }] }
-              }
-            },
-            { $project: { name: 1, Marketprice: 1 } }
-          ],
-          as: 'productsData'
+          from: "products",
+          localField: "allProductIds",
+          foreignField: "_id",
+          as: "productsData"
         }
       },
 
-      // 5. Merge product data
+      // 5. Merge product data (🔥 FIXED with $toString)
       {
         $addFields: {
           deals: {
             $map: {
-              input: '$deals',
-              as: 'deal',
+              input: "$deals",
+              as: "deal",
               in: {
-                products: {
-                  $map: {
-                    input: '$$deal.products',
-                    as: 'prod',
-                    in: {
-                      $mergeObjects: [
-                        '$$prod',
-                        {
-                          product: {
-                            $arrayElemAt: [
-                              {
-                                $filter: {
-                                  input: '$productsData',
-                                  as: 'p',
-                                  cond: { $eq: ['$$p._id', '$$prod.product'] }
+                $mergeObjects: [
+                  "$$deal",
+                  {
+                    products: {
+                      $map: {
+                        input: { $ifNull: ["$$deal.products", []] },
+                        as: "prod",
+                        in: {
+                          $mergeObjects: [
+                            "$$prod",
+                            {
+                              product: {
+                                name: {
+                                  $arrayElemAt: [
+                                    {
+                                      $map: {
+                                        input: {
+                                          $filter: {
+                                            input: "$productsData",
+                                            as: "p",
+                                            cond: {
+                                              $eq: [
+                                                { $toString: "$$p._id" },
+                                                { $toString: "$$prod.product" }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        as: "matched",
+                                        in: "$$matched.name"
+                                      }
+                                    },
+                                    0
+                                  ]
                                 }
-                              },
-                              0
-                            ]
-                          }
+                              }
+                            }
+                          ]
                         }
-                      ]
+                      }
                     }
                   }
-                }
+                ]
               }
             }
           }
@@ -487,7 +517,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }]
         : []),
 
-      // Final fields
+      // 6. Final fields
       {
         $project: {
           hospitalName: 1,
@@ -500,7 +530,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }
       },
 
-      // Pagination
+      // 7. Pagination
       {
         $facet: {
           data: [
@@ -529,10 +559,10 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
     });
 
   } catch (error: any) {
-    console.error('Error fetching hospitals with deals:', error);
+    console.error("Error fetching hospitals with deals:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
+      message: "Server error",
       error: error.message
     });
   }
