@@ -158,7 +158,8 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
     // 1. Get hospital
     const hospital = await Hospital.findById(id)
       .populate("idn", "name")
-      .populate("gpo", "name");
+      .populate("gpo", "name")
+      .populate("contacts", "firstName lastName phoneNumber designation email");
 
     if (!hospital) {
       res.status(404).json({
