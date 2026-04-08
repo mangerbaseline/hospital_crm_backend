@@ -53,16 +53,16 @@ import IDN from '../model/Idn.ts';
 export const getHospitals = async (req: Request, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
-    const idn = req.query.idn as string; // 👈 NEW
+    const idn = req.query.idn as string;
 
-    const skip = (page - 1) * limit;
+    // Handle limit properly
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : null;
+    const skip = limit ? (page - 1) * limit : 0;
 
-    // Base search query
+    // Build search query
     let searchQuery: any = {};
 
-    // Search filter
     if (search) {
       searchQuery.$or = [
         { hospitalName: { $regex: search, $options: "i" } },
@@ -70,43 +70,31 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
       ];
     }
 
-    if (idn) { searchQuery.idn = idn; }
+    if (idn) {
+      searchQuery.idn = idn;
+    }
 
-    // const hospitals = await Hospital.find(searchQuery)
-    //   .sort({ createdAt: -1 })
-    //   .skip(skip)
-    //   .limit(limit)
-    //   .populate('idn').populate('gpo');
-
-
-
-    const hospitals = await Hospital.find(searchQuery)
+    // Base query
+    let query = Hospital.find(searchQuery)
       .select('hospitalName gpo idn')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate({
-        path: 'gpo',
-        select: 'name'
-      })
-      .populate({
-        path: 'idn',
-        select: 'name'
-      });
+      .populate({ path: 'gpo', select: 'name' })
+      .populate({ path: 'idn', select: 'name' });
 
+    // Apply pagination ONLY if limit exists
+    if (limit) {
+      query = query.skip(skip).limit(limit);
+    }
 
-
-
-
-
+    const hospitals = await query;
     const total = await Hospital.countDocuments(searchQuery);
 
     res.status(200).json({
       success: true,
-      page,
-      limit,
+      page: limit ? page : 1,                         // reset page if no limit
+      limit: limit || total,                          // show total if no limit
       totalHospitals: total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: limit ? Math.ceil(total / limit) : 1, // avoid division by null
       data: hospitals
     });
 
@@ -118,7 +106,6 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
     });
   }
 };
-
 
 
 
@@ -377,15 +364,230 @@ export const getAllHospitalsDeals = async (req: Request, res: Response): Promise
 };
 */
 
+/*
 export const getAllHospitalsDeals = async (req: Request, res: Response): Promise<void> => {
   try {
-    const hospitals = await Hospital.aggregate([
-      // 1. Lookup Deals
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10; // 👈 default 10
+    const skip = (page - 1) * limit;
+    const search = (req.query.search as string) || "";
+
+    const pipeline: any[] = [
+      // 1. Lookup Deals (ONLY products)
       {
         $lookup: {
           from: 'deals',
-          localField: '_id',
-          foreignField: 'hospital',
+          let: { hospitalId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$hospital', '$$hospitalId'] }
+              }
+            },
+            {
+              $project: {
+                products: 1
+              }
+            }
+          ],
+          as: 'deals'
+        }
+      },
+
+      // 2. Lookup IDN
+      {
+        $lookup: {
+          from: 'idns',
+          let: { idnId: '$idn' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$idnId'] }
+              }
+            },
+            { $project: { name: 1, user: 1 } }
+          ],
+          as: 'idn'
+        }
+      },
+      { $unwind: { path: '$idn', preserveNullAndEmptyArrays: true } },
+
+      // 3. Lookup GPO
+      {
+        $lookup: {
+          from: 'gpos',
+          let: { gpoId: '$gpo' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$gpoId'] }
+              }
+            },
+            { $project: { name: 1, user: 1 } }
+          ],
+          as: 'gpo'
+        }
+      },
+      { $unwind: { path: '$gpo', preserveNullAndEmptyArrays: true } },
+
+      // 4. Populate products
+      {
+        $lookup: {
+          from: 'products',
+          let: { productIds: '$deals.products.product' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $in: ['$_id', { $ifNull: ['$$productIds', []] }] }
+              }
+            },
+            { $project: { name: 1, Marketprice: 1 } }
+          ],
+          as: 'productsData'
+        }
+      },
+
+      // 5. Merge product data
+      {
+        $addFields: {
+          deals: {
+            $map: {
+              input: '$deals',
+              as: 'deal',
+              in: {
+                products: {
+                  $map: {
+                    input: '$$deal.products',
+                    as: 'prod',
+                    in: {
+                      $mergeObjects: [
+                        '$$prod',
+                        {
+                          product: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: '$productsData',
+                                  as: 'p',
+                                  cond: { $eq: ['$$p._id', '$$prod.product'] }
+                                }
+                              },
+                              0
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      // 6. SEARCH FILTER 🔥
+      ...(search
+        ? [{
+          $match: {
+            $or: [
+              { hospitalName: { $regex: search, $options: "i" } },
+              { city: { $regex: search, $options: "i" } },
+              { "idn.name": { $regex: search, $options: "i" } },
+              { "deals.products.product.name": { $regex: search, $options: "i" } }
+            ]
+          }
+        }]
+        : []),
+
+      // 7. FINAL PROJECT
+      {
+        $project: {
+          hospitalName: 1,
+          city: 1,
+          state: 1,
+          zip: 1,
+          idn: 1,
+          gpo: 1,
+          deals: 1
+        }
+      },
+
+      // 8. FACET (pagination + total count)
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          totalCount: [
+            { $count: "count" }
+          ]
+        }
+      }
+    ];
+
+    const result = await Hospital.aggregate(pipeline);
+
+    const hospitals = result[0].data;
+    const total = result[0].totalCount[0]?.count || 0;
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalHospitals: total,
+      totalPages: Math.ceil(total / limit),
+      data: hospitals
+    });
+
+  } catch (error) {
+    console.error('Error fetching hospitals with deals:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+*/
+
+
+export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const showAll = req.query.all === 'true';
+    const skip = (page - 1) * limit;
+    const search = (req.query.search as string) || "";
+
+    const userId = req.user?._id;
+
+    const pipeline: any[] = [
+
+      // ✅ FIXED USER FILTER
+      ...(!showAll && userId
+        ? [{
+          $match: { user: userId }
+        }]
+        : []),
+
+      // 1. Lookup Deals (ONLY products)
+      {
+        $lookup: {
+          from: 'deals',
+          let: { hospitalId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$hospital', '$$hospitalId'] }
+              }
+            },
+            {
+              $project: {
+                products: 1
+              }
+            }
+          ],
           as: 'deals'
         }
       },
@@ -411,12 +613,7 @@ export const getAllHospitalsDeals = async (req: Request, res: Response): Promise
           as: 'idn'
         }
       },
-      {
-        $unwind: {
-          path: '$idn',
-          preserveNullAndEmptyArrays: true
-        }
-      },
+      { $unwind: { path: '$idn', preserveNullAndEmptyArrays: true } },
 
       // 3. Lookup GPO
       {
@@ -439,24 +636,31 @@ export const getAllHospitalsDeals = async (req: Request, res: Response): Promise
           as: 'gpo'
         }
       },
-      {
-        $unwind: {
-          path: '$gpo',
-          preserveNullAndEmptyArrays: true
-        }
-      },
+      { $unwind: { path: '$gpo', preserveNullAndEmptyArrays: true } },
 
-      // 4. Populate products inside deals
+      // 4. Populate products
       {
         $lookup: {
           from: 'products',
-          localField: 'deals.products.product',
-          foreignField: '_id',
+          let: { productIds: '$deals.products.product' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $in: ['$_id', { $ifNull: ['$$productIds', []] }] }
+              }
+            },
+            {
+              $project: {
+                name: 1,
+                Marketprice: 1
+              }
+            }
+          ],
           as: 'productsData'
         }
       },
 
-      // 5. Merge product data into deals.products
+      // 5. Merge product data
       {
         $addFields: {
           deals: {
@@ -464,60 +668,98 @@ export const getAllHospitalsDeals = async (req: Request, res: Response): Promise
               input: '$deals',
               as: 'deal',
               in: {
-                $mergeObjects: [
-                  '$$deal',
-                  {
-                    products: {
-                      $map: {
-                        input: '$$deal.products',
-                        as: 'prod',
-                        in: {
-                          $mergeObjects: [
-                            '$$prod',
-                            {
-                              product: {
-                                $arrayElemAt: [
-                                  {
-                                    $filter: {
-                                      input: '$productsData',
-                                      as: 'p',
-                                      cond: { $eq: ['$$p._id', '$$prod.product'] }
-                                    }
-                                  },
-                                  0
-                                ]
-                              }
-                            }
-                          ]
+                products: {
+                  $map: {
+                    input: '$$deal.products',
+                    as: 'prod',
+                    in: {
+                      $mergeObjects: [
+                        '$$prod',
+                        {
+                          product: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: '$productsData',
+                                  as: 'p',
+                                  cond: { $eq: ['$$p._id', '$$prod.product'] }
+                                }
+                              },
+                              0
+                            ]
+                          }
                         }
-                      }
+                      ]
                     }
                   }
-                ]
+                }
               }
             }
           }
         }
       },
 
-      // Optional: remove temp field
+      // 🔍 SEARCH FILTER
+      ...(search
+        ? [{
+          $match: {
+            $or: [
+              { hospitalName: { $regex: search, $options: "i" } },
+              { city: { $regex: search, $options: "i" } },
+              { "idn.name": { $regex: search, $options: "i" } },
+              { "deals.products.product.name": { $regex: search, $options: "i" } }
+            ]
+          }
+        }]
+        : []),
+
+      // 6. Final fields
       {
         $project: {
-          productsData: 0
+          hospitalName: 1,
+          city: 1,
+          state: 1,
+          zip: 1,
+          idn: 1,
+          gpo: 1,
+          deals: 1
+        }
+      },
+
+      // 7. Pagination + total count
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          totalCount: [
+            { $count: "count" }
+          ]
         }
       }
-    ]);
+    ];
+
+    const result = await Hospital.aggregate(pipeline);
+
+    const hospitals = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.count || 0;
 
     res.status(200).json({
       success: true,
+      page,
+      limit,
+      totalHospitals: total,
+      totalPages: Math.ceil(total / limit),
       data: hospitals
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching hospitals with deals:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: error.message
     });
   }
 };
