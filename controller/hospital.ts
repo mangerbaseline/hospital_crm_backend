@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Hospital from '../model/Hospital.ts';
 import GPO from '../model/Gpo.ts';
 import IDN from '../model/Idn.ts';
+import mongoose from "mongoose";
 
 // export const getHospitals = async (req: Request, res: Response): Promise<void> => {
 //   try {
@@ -556,22 +557,26 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const showAll = req.query.all === 'true';
     const skip = (page - 1) * limit;
     const search = (req.query.search as string) || "";
 
-    const userId = req.user?._id;
+    const userId = req.query.userId as string; // may be undefined
+
+    // ✅ Convert only if exists
+    const filterUserId = userId
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
 
     const pipeline: any[] = [
 
-      // ✅ FIXED USER FILTER
-      ...(!showAll && userId
+      // ✅ USER FILTER (only when provided)
+      ...(filterUserId
         ? [{
-          $match: { user: userId }
+          $match: { user: filterUserId }
         }]
         : []),
 
-      // 1. Lookup Deals (ONLY products)
+      // 1. Lookup Deals
       {
         $lookup: {
           from: 'deals',
@@ -583,9 +588,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
               }
             },
             {
-              $project: {
-                products: 1
-              }
+              $project: { products: 1 }
             }
           ],
           as: 'deals'
@@ -603,12 +606,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                 $expr: { $eq: ['$_id', '$$idnId'] }
               }
             },
-            {
-              $project: {
-                name: 1,
-                user: 1
-              }
-            }
+            { $project: { name: 1, user: 1 } }
           ],
           as: 'idn'
         }
@@ -626,12 +624,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                 $expr: { $eq: ['$_id', '$$gpoId'] }
               }
             },
-            {
-              $project: {
-                name: 1,
-                user: 1
-              }
-            }
+            { $project: { name: 1, user: 1 } }
           ],
           as: 'gpo'
         }
@@ -649,12 +642,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                 $expr: { $in: ['$_id', { $ifNull: ['$$productIds', []] }] }
               }
             },
-            {
-              $project: {
-                name: 1,
-                Marketprice: 1
-              }
-            }
+            { $project: { name: 1, Marketprice: 1 } }
           ],
           as: 'productsData'
         }
@@ -699,7 +687,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }
       },
 
-      // 🔍 SEARCH FILTER
+      // 🔍 SEARCH
       ...(search
         ? [{
           $match: {
@@ -713,7 +701,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }]
         : []),
 
-      // 6. Final fields
+      // Final fields
       {
         $project: {
           hospitalName: 1,
@@ -726,7 +714,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }
       },
 
-      // 7. Pagination + total count
+      // Pagination
       {
         $facet: {
           data: [
