@@ -70,16 +70,34 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
       ];
     }
 
-    // IDN filter
-    if (idn) {
-      searchQuery.idn = idn; // 👈 assuming idn is ObjectId ref
-    }
+    if (idn) { searchQuery.idn = idn; }
+
+    // const hospitals = await Hospital.find(searchQuery)
+    //   .sort({ createdAt: -1 })
+    //   .skip(skip)
+    //   .limit(limit)
+    //   .populate('idn').populate('gpo');
+
+
 
     const hospitals = await Hospital.find(searchQuery)
+      .select('hospitalName gpo idn')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('idn');
+      .populate({
+        path: 'gpo',
+        select: 'name'
+      })
+      .populate({
+        path: 'idn',
+        select: 'name'
+      });
+
+
+
+
+
 
     const total = await Hospital.countDocuments(searchQuery);
 
