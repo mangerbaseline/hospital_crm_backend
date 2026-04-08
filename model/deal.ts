@@ -5,12 +5,12 @@ export interface IDealProduct {
   dealAmount?: number;
   stage?: string;
   expectedCloseDate?: Date;
+  dealDate?: Date;
 }
 
 
 export interface IDeal extends Document {
   hospital: mongoose.Types.ObjectId;
-  contact?: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
   gpo: mongoose.Types.ObjectId;
   idn: mongoose.Types.ObjectId;
@@ -51,9 +51,13 @@ const DealSchema: Schema = new Schema({
           "Closed Won",
           "Implemented"
         ],
-        default: "Demo" // optional
+        default: "Demo"
       },
-      expectedCloseDate: Date
+      expectedCloseDate: Date,
+      dealDate: {
+        type: Date,
+        default: Date.now
+      }
     }
   ],
   user: {

@@ -342,11 +342,10 @@ export const getHospitalsByIDN = async (req: Request, res: Response): Promise<vo
 
 
 
-
+/*
 export const getAllHospitalsDeals = async (req: Request, res: Response): Promise<void> => {
   try {
-    const hospitals = await Hospital.find()
-      .populate('gpo idn')
+    const hospitals = await Hospital.find().populate('gpo idn')
 
     res.status(200).json({
       success: true,
@@ -356,5 +355,151 @@ export const getAllHospitalsDeals = async (req: Request, res: Response): Promise
   } catch (error) {
     console.error('Error fetching hospitalsDeals:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+*/
+
+export const getAllHospitalsDeals = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hospitals = await Hospital.aggregate([
+      // 1. Lookup Deals
+      {
+        $lookup: {
+          from: 'deals',
+          localField: '_id',
+          foreignField: 'hospital',
+          as: 'deals'
+        }
+      },
+
+      // 2. Lookup IDN
+      {
+        $lookup: {
+          from: 'idns',
+          let: { idnId: '$idn' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$idnId'] }
+              }
+            },
+            {
+              $project: {
+                name: 1,
+                user: 1
+              }
+            }
+          ],
+          as: 'idn'
+        }
+      },
+      {
+        $unwind: {
+          path: '$idn',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // 3. Lookup GPO
+      {
+        $lookup: {
+          from: 'gpos',
+          let: { gpoId: '$gpo' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$gpoId'] }
+              }
+            },
+            {
+              $project: {
+                name: 1,
+                user: 1
+              }
+            }
+          ],
+          as: 'gpo'
+        }
+      },
+      {
+        $unwind: {
+          path: '$gpo',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // 4. Populate products inside deals
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'deals.products.product',
+          foreignField: '_id',
+          as: 'productsData'
+        }
+      },
+
+      // 5. Merge product data into deals.products
+      {
+        $addFields: {
+          deals: {
+            $map: {
+              input: '$deals',
+              as: 'deal',
+              in: {
+                $mergeObjects: [
+                  '$$deal',
+                  {
+                    products: {
+                      $map: {
+                        input: '$$deal.products',
+                        as: 'prod',
+                        in: {
+                          $mergeObjects: [
+                            '$$prod',
+                            {
+                              product: {
+                                $arrayElemAt: [
+                                  {
+                                    $filter: {
+                                      input: '$productsData',
+                                      as: 'p',
+                                      cond: { $eq: ['$$p._id', '$$prod.product'] }
+                                    }
+                                  },
+                                  0
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      // Optional: remove temp field
+      {
+        $project: {
+          productsData: 0
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: hospitals
+    });
+
+  } catch (error) {
+    console.error('Error fetching hospitals with deals:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 };
