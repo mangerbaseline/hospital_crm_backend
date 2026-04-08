@@ -4,6 +4,7 @@ import Hospital from '../model/Hospital.ts';
 import GPO from '../model/Gpo.ts';
 import IDN from '../model/Idn.ts';
 import mongoose from "mongoose";
+import Deal from '../model/deal.ts';
 
 // export const getHospitals = async (req: Request, res: Response): Promise<void> => {
 //   try {
@@ -111,9 +112,7 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
 
 
 
-
-
-
+/*
 export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -145,30 +144,57 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
     });
   }
 };
+*/
 
-// export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
-//   try {
-//     const hospitalData = {
-//       ...req.body,
-//       user: req.user?._id
-//     };
+export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
 
-//     const hospital = new Hospital(hospitalData);
-//     await hospital.save();
+    if (typeof id !== 'string') {
+      res.status(400).json({ success: false, message: 'Invalid ID' });
+      return;
+    }
 
-//     res.status(201).json({
-//       success: true,
-//       data: hospital
-//     });
-//   } catch (error: any) {
-//     res.status(400).json({
-//       success: false,
-//       message: 'Failed to create hospital',
-//       error: error.message
-//     });
-//   }
-// };
+    // 1. Get hospital
+    const hospital = await Hospital.findById(id)
+      .populate("idn", "name")
+      .populate("gpo", "name");
 
+    if (!hospital) {
+      res.status(404).json({
+        success: false,
+        message: 'Hospital not found'
+      });
+      return;
+    }
+
+    // 2. Get deals of this hospital + populate products
+    const deals = await Deal.find({ hospital: id })
+      .select("products") // only products
+      .populate({
+        path: "products.product",
+        select: "name Marketprice"
+      });
+
+    // 3. Attach deals to hospital
+    const responseData = {
+      ...hospital.toObject(),
+      deals
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseData
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching hospital',
+      error: error.message
+    });
+  }
+};
 
 
 export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -203,34 +229,6 @@ export const createHospital = async (req: AuthRequest, res: Response): Promise<v
     });
   }
 };
-
-
-
-
-
-
-
-
-// export const deleteHospital = async (req: Request, res: Response): Promise<void> => {
-//   try {
-//     const { id } = req.params;
-//     if (typeof id !== 'string') {
-//       res.status(400).json({ success: false, message: 'Invalid ID' });
-//       return;
-//     }
-
-//     const hospital = await Hospital.findByIdAndDelete(id);
-
-//     if (!hospital) {
-//       res.status(404).json({ success: false, message: 'Hospital not found' });
-//       return;
-//     }
-
-//     res.status(200).json({ success: true, message: 'Hospital deleted successfully' });
-//   } catch (error: any) {
-//     res.status(500).json({ success: false, message: 'Error deleting hospital', error: error.message });
-//   }
-// };
 
 
 export const deleteHospital = async (req: Request, res: Response): Promise<void> => {
@@ -278,10 +276,6 @@ export const deleteHospital = async (req: Request, res: Response): Promise<void>
     });
   }
 };
-
-
-
-
 
 
 export const updateHospital = async (req: Request, res: Response): Promise<void> => {
@@ -343,214 +337,6 @@ export const getHospitalsByIDN = async (req: Request, res: Response): Promise<vo
   }
 };
 
-
-
-
-
-
-/*
-export const getAllHospitalsDeals = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const hospitals = await Hospital.find().populate('gpo idn')
-
-    res.status(200).json({
-      success: true,
-      data: hospitals
-    });
-
-  } catch (error) {
-    console.error('Error fetching hospitalsDeals:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-*/
-
-/*
-export const getAllHospitalsDeals = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10; // 👈 default 10
-    const skip = (page - 1) * limit;
-    const search = (req.query.search as string) || "";
-
-    const pipeline: any[] = [
-      // 1. Lookup Deals (ONLY products)
-      {
-        $lookup: {
-          from: 'deals',
-          let: { hospitalId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ['$hospital', '$$hospitalId'] }
-              }
-            },
-            {
-              $project: {
-                products: 1
-              }
-            }
-          ],
-          as: 'deals'
-        }
-      },
-
-      // 2. Lookup IDN
-      {
-        $lookup: {
-          from: 'idns',
-          let: { idnId: '$idn' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ['$_id', '$$idnId'] }
-              }
-            },
-            { $project: { name: 1, user: 1 } }
-          ],
-          as: 'idn'
-        }
-      },
-      { $unwind: { path: '$idn', preserveNullAndEmptyArrays: true } },
-
-      // 3. Lookup GPO
-      {
-        $lookup: {
-          from: 'gpos',
-          let: { gpoId: '$gpo' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ['$_id', '$$gpoId'] }
-              }
-            },
-            { $project: { name: 1, user: 1 } }
-          ],
-          as: 'gpo'
-        }
-      },
-      { $unwind: { path: '$gpo', preserveNullAndEmptyArrays: true } },
-
-      // 4. Populate products
-      {
-        $lookup: {
-          from: 'products',
-          let: { productIds: '$deals.products.product' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $in: ['$_id', { $ifNull: ['$$productIds', []] }] }
-              }
-            },
-            { $project: { name: 1, Marketprice: 1 } }
-          ],
-          as: 'productsData'
-        }
-      },
-
-      // 5. Merge product data
-      {
-        $addFields: {
-          deals: {
-            $map: {
-              input: '$deals',
-              as: 'deal',
-              in: {
-                products: {
-                  $map: {
-                    input: '$$deal.products',
-                    as: 'prod',
-                    in: {
-                      $mergeObjects: [
-                        '$$prod',
-                        {
-                          product: {
-                            $arrayElemAt: [
-                              {
-                                $filter: {
-                                  input: '$productsData',
-                                  as: 'p',
-                                  cond: { $eq: ['$$p._id', '$$prod.product'] }
-                                }
-                              },
-                              0
-                            ]
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-
-      // 6. SEARCH FILTER 🔥
-      ...(search
-        ? [{
-          $match: {
-            $or: [
-              { hospitalName: { $regex: search, $options: "i" } },
-              { city: { $regex: search, $options: "i" } },
-              { "idn.name": { $regex: search, $options: "i" } },
-              { "deals.products.product.name": { $regex: search, $options: "i" } }
-            ]
-          }
-        }]
-        : []),
-
-      // 7. FINAL PROJECT
-      {
-        $project: {
-          hospitalName: 1,
-          city: 1,
-          state: 1,
-          zip: 1,
-          idn: 1,
-          gpo: 1,
-          deals: 1
-        }
-      },
-
-      // 8. FACET (pagination + total count)
-      {
-        $facet: {
-          data: [
-            { $skip: skip },
-            { $limit: limit }
-          ],
-          totalCount: [
-            { $count: "count" }
-          ]
-        }
-      }
-    ];
-
-    const result = await Hospital.aggregate(pipeline);
-
-    const hospitals = result[0].data;
-    const total = result[0].totalCount[0]?.count || 0;
-
-    res.status(200).json({
-      success: true,
-      page,
-      limit,
-      totalHospitals: total,
-      totalPages: Math.ceil(total / limit),
-      data: hospitals
-    });
-
-  } catch (error) {
-    console.error('Error fetching hospitals with deals:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-};
-*/
 
 
 export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
