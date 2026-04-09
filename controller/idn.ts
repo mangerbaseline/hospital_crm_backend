@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import IDN from '../model/Idn.ts';
+import Deal from '../model/deal.ts';
+import Hospital from '../model/Hospital.ts';
 
 export const getIDNs = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -147,6 +149,109 @@ export const updateIDN = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Failed to update IDN',
+      error: error.message
+    });
+  }
+};
+
+
+export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // 1. Extract query parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const userId = req.query.userId as string;
+
+    const skip = (page - 1) * limit;
+
+    // 2. Build search and filter query
+    const query: any = {};
+    
+    if (search) {
+      query.name = { $regex: search, $options: "i" };
+    }
+    
+    if (userId) {
+      query.user = userId;
+    }
+
+    // 3. Fetch IDNs with pagination and search
+    const idns = await IDN.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const totalIDNs = await IDN.countDocuments(query);
+
+    // 4. Aggregate data for each IDN
+    const idnsWithDeals = await Promise.all(idns.map(async (idn: any) => {
+      const hospitals = await Hospital.find({ idn: idn._id })
+        .populate('gpo', 'name')
+        .lean();
+
+      const allDeals = await Deal.find({ idn: idn._id })
+        .populate('products.product', 'name')
+        .lean();
+
+      let idnTotalExpectedARR = 0;
+      const idnARRByProduct: Record<string, number> = {};
+
+      allDeals.forEach(deal => {
+        deal.products.forEach((p: any) => {
+          const amount = p.dealAmount || 0;
+          idnTotalExpectedARR += amount;
+          const productName = p.product?.name || 'Unknown';
+          idnARRByProduct[productName] = (idnARRByProduct[productName] || 0) + amount;
+        });
+      });
+
+      const hospitalsWithData = hospitals.map(hospital => {
+        const hospitalDeals = allDeals.filter(d => d.hospital.toString() === hospital._id.toString());
+        
+        let hospitalTotalExpectedARR = 0;
+        const hospitalARRByProduct: Record<string, number> = {};
+
+        hospitalDeals.forEach(deal => {
+          deal.products.forEach((p: any) => {
+            const amount = p.dealAmount || 0;
+            hospitalTotalExpectedARR += amount;
+            const productName = p.product?.name || 'Unknown';
+            hospitalARRByProduct[productName] = (hospitalARRByProduct[productName] || 0) + amount;
+          });
+        });
+
+        return {
+          ...hospital,
+          totalExpectedARR: hospitalTotalExpectedARR,
+          expectedARRByProduct: Object.entries(hospitalARRByProduct).map(([name, amount]) => ({ name, amount }))
+        };
+      });
+
+      return {
+        ...idn,
+        totalHospitals: hospitals.length,
+        idnTotalExpectedARR,
+        idnARRByProduct: Object.entries(idnARRByProduct).map(([name, amount]) => ({ name, amount })),
+        hospitals: hospitalsWithData
+      };
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: idnsWithDeals,
+      pagination: {
+        total: totalIDNs,
+        page,
+        limit,
+        totalPages: Math.ceil(totalIDNs / limit)
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve IDNs and deals data',
       error: error.message
     });
   }
