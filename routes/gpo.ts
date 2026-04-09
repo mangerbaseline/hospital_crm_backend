@@ -8,13 +8,11 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/all-gpos', getGPOs);
-router.get('/all-gpos-deals', getAllGPODeals);
+router.get('/all-gpo-deals', getAllGPODeals);
 router.get('/:id', getGPOById);
 router.post('/create', createGPO);
 router.put('/:id', updateGPO);
 router.delete('/:id', deleteGPO);
-
-router.get('/all-gpos-deals', getAllGPODeals);
 
 
 export default router;
