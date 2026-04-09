@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import IDN from '../model/Idn.ts';
 import Deal from '../model/deal.ts';
 import Hospital from '../model/Hospital.ts';
+import Product from '../model/Product.ts';
 
 export const getIDNs = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -167,13 +168,22 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
 
     // 2. Build search and filter query
     const query: any = {};
-    
+
     if (search) {
       query.name = { $regex: search, $options: "i" };
     }
-    
+
     if (userId) {
-      query.user = userId;
+      // Find IDNs created by the user OR IDNs containing hospitals created by the user
+      const [userIdnIds, userHospitalIdnIds] = await Promise.all([
+        IDN.find({ user: userId }).distinct('_id'),
+        Hospital.find({ user: userId }).distinct('idn')
+      ]);
+
+      // Combine unique IDN IDs
+      const relevantIdnIds = [...new Set([...userIdnIds.map(id => id.toString()), ...userHospitalIdnIds.map(id => id.toString())])];
+
+      query._id = { $in: relevantIdnIds };
     }
 
     // 3. Fetch IDNs with pagination and search
@@ -192,34 +202,50 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
         .lean();
 
       const allDeals = await Deal.find({ idn: idn._id })
-        .populate('products.product', 'name')
+        .populate('products')
         .lean();
+
+      console.log(JSON.stringify(allDeals, null, 2));
+
 
       let idnTotalExpectedARR = 0;
       const idnARRByProduct: Record<string, number> = {};
 
-      allDeals.forEach(deal => {
-        deal.products.forEach((p: any) => {
-          const amount = p.dealAmount || 0;
-          idnTotalExpectedARR += amount;
-          const productName = p.product?.name || 'Unknown';
-          idnARRByProduct[productName] = (idnARRByProduct[productName] || 0) + amount;
-        });
+      allDeals.forEach((deal: any) => {
+        if (deal.products && Array.isArray(deal.products)) {
+          deal.products.forEach((p: any) => {
+            const amount = p.dealAmount || 0;
+            idnTotalExpectedARR += amount;
+
+            // Check if product is populated and has a name
+            const productName = (p.product && typeof p.product === 'object' && p.product.name)
+              ? p.product.name
+              : 'Unknown';
+
+            idnARRByProduct[productName] = (idnARRByProduct[productName] || 0) + amount;
+          });
+        }
       });
 
       const hospitalsWithData = hospitals.map(hospital => {
         const hospitalDeals = allDeals.filter(d => d.hospital.toString() === hospital._id.toString());
-        
+
         let hospitalTotalExpectedARR = 0;
         const hospitalARRByProduct: Record<string, number> = {};
 
-        hospitalDeals.forEach(deal => {
-          deal.products.forEach((p: any) => {
-            const amount = p.dealAmount || 0;
-            hospitalTotalExpectedARR += amount;
-            const productName = p.product?.name || 'Unknown';
-            hospitalARRByProduct[productName] = (hospitalARRByProduct[productName] || 0) + amount;
-          });
+        hospitalDeals.forEach((deal: any) => {
+          if (deal.products && Array.isArray(deal.products)) {
+            deal.products.forEach((p: any) => {
+              const amount = p.dealAmount || 0;
+              hospitalTotalExpectedARR += amount;
+
+              const productName = (p.product && typeof p.product === 'object' && p.product.name)
+                ? p.product.name
+                : 'Unknown';
+
+              hospitalARRByProduct[productName] = (hospitalARRByProduct[productName] || 0) + amount;
+            });
+          }
         });
 
         return {

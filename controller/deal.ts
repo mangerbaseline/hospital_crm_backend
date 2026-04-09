@@ -30,7 +30,13 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
           { path: 'gpo' }
         ]
       })
-      .populate('products')
+      .populate({
+        path: 'products',
+        populate: {
+          path: 'product'
+        }
+      })
+
       .populate('user', 'name email');
 
     const total = await Deal.countDocuments(query);
