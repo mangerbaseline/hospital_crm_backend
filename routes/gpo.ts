@@ -1,7 +1,6 @@
 import express from 'express';
 import { getGPOs, getGPOById, createGPO, deleteGPO, updateGPO, getAllGPODeals } from '../controller/gpo.ts';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.ts';
-import { UserRole } from '../model/User.ts';
 
 const router = express.Router();
 

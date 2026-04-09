@@ -24,17 +24,20 @@ const DealSchema: Schema = new Schema({
   hospital: {
     type: Schema.Types.ObjectId,
     ref: 'Hospital',
-    required: true
+    required: true,
+    index: true
   },
   idn: {
     type: Schema.Types.ObjectId,
     ref: 'IDN',
-    required: true
+    required: true,
+    index: true
   },
   gpo: {
     type: Schema.Types.ObjectId,
     ref: 'GPO',
-    required: true
+    required: true,
+    index: true
   },
   products: [
     {

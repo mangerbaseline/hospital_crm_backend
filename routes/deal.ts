@@ -1,7 +1,6 @@
 import express from 'express';
 import { getDeals, getDealById, createDeal, deleteDeal, updateDeal } from '../controller/deal.ts';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.ts';
-import { UserRole } from '../model/User.ts';
 
 const router = express.Router();
 

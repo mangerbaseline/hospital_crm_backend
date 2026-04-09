@@ -4,6 +4,7 @@ import GPOModel from '../model/Gpo.ts';
 import Deal from '../model/deal.ts';
 import Hospital from '../model/Hospital.ts';
 import Product from '../model/Product.ts';
+import mongoose from "mongoose";
 
 export const getGPOs = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -155,7 +156,7 @@ export const updateGPO = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-
+/*
 export const getAllGPODeals = async (req: Request, res: Response): Promise<void> => {
   try {
     // 1. Extract query parameters
@@ -284,6 +285,294 @@ export const getAllGPODeals = async (req: Request, res: Response): Promise<void>
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve GPOs and deals data',
+      error: error.message
+    });
+  }
+};
+*/
+
+export const getAllGPODeals = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const userId = req.query.userId as string;
+
+    const skip = (page - 1) * limit;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const matchStage: any = {};
+    if (search) {
+      matchStage.name = { $regex: search, $options: "i" };
+    }
+
+    const pipeline: any[] = [
+      { $match: matchStage },
+
+      // ✅ Step 1: Get ONLY user hospitals
+      {
+        $lookup: {
+          from: "hospitals",
+          let: { gpoId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$gpo", "$$gpoId"] },
+                    { $eq: ["$user", userObjectId] }
+                  ]
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: "idns",
+                localField: "idn",
+                foreignField: "_id",
+                as: "idn"
+              }
+            },
+            { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } }
+          ],
+          as: "hospitals"
+        }
+      },
+
+      // ❌ REMOVE GPOs with no hospitals
+      {
+        $match: {
+          "hospitals.0": { $exists: true }
+        }
+      },
+
+      // ✅ Step 2: Extract hospitalIds
+      {
+        $addFields: {
+          hospitalIds: "$hospitals._id"
+        }
+      },
+
+      // ✅ Step 3: Fetch ONLY relevant deals
+      {
+        $lookup: {
+          from: "deals",
+          let: { hospitalIds: "$hospitalIds" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $in: ["$hospital", "$$hospitalIds"]
+                }
+              }
+            },
+            { $unwind: "$products" },
+
+            {
+              $lookup: {
+                from: "products",
+                localField: "products.product",
+                foreignField: "_id",
+                as: "product"
+              }
+            },
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } }
+          ],
+          as: "deals"
+        }
+      },
+
+      // ✅ Step 4: Hospital-level aggregation
+      {
+        $addFields: {
+          hospitals: {
+            $map: {
+              input: "$hospitals",
+              as: "h",
+              in: {
+                _id: "$$h._id",
+                hospitalName: "$$h.hospitalName",
+                idn: "$$h.idn",
+
+                totalExpectedARR: {
+                  $sum: {
+                    $map: {
+                      input: {
+                        $filter: {
+                          input: "$deals",
+                          as: "d",
+                          cond: { $eq: ["$$d.hospital", "$$h._id"] }
+                        }
+                      },
+                      as: "d",
+                      in: { $ifNull: ["$$d.products.dealAmount", 0] }
+                    }
+                  }
+                },
+
+                expectedARRByProduct: {
+                  $map: {
+                    input: {
+                      $setUnion: [
+                        {
+                          $map: {
+                            input: {
+                              $filter: {
+                                input: "$deals",
+                                as: "d",
+                                cond: { $eq: ["$$d.hospital", "$$h._id"] }
+                              }
+                            },
+                            as: "d",
+                            in: "$$d.product.name"
+                          }
+                        }
+                      ]
+                    },
+                    as: "productName",
+                    in: {
+                      name: "$$productName",
+                      amount: {
+                        $sum: {
+                          $map: {
+                            input: {
+                              $filter: {
+                                input: "$deals",
+                                as: "d",
+                                cond: {
+                                  $and: [
+                                    { $eq: ["$$d.hospital", "$$h._id"] },
+                                    { $eq: ["$$d.product.name", "$$productName"] }
+                                  ]
+                                }
+                              }
+                            },
+                            as: "d",
+                            in: { $ifNull: ["$$d.products.dealAmount", 0] }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      // ✅ Step 5: GPO totals
+      {
+        $addFields: {
+          gpoTotalExpectedARR: {
+            $sum: "$deals.products.dealAmount"
+          }
+        }
+      },
+
+      // ✅ Step 6: GPO product grouping
+      {
+        $addFields: {
+          gpoARRByProduct: {
+            $map: {
+              input: {
+                $setUnion: [
+                  {
+                    $map: {
+                      input: "$deals",
+                      as: "d",
+                      in: "$$d.product.name"
+                    }
+                  }
+                ]
+              },
+              as: "productName",
+              in: {
+                name: "$$productName",
+                amount: {
+                  $sum: {
+                    $map: {
+                      input: "$deals",
+                      as: "d",
+                      in: {
+                        $cond: [
+                          { $eq: ["$$d.product.name", "$$productName"] },
+                          { $ifNull: ["$$d.products.dealAmount", 0] },
+                          0
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          totalHospitals: { $size: "$hospitals" }
+        }
+      },
+
+      {
+        $project: {
+          deals: 0,
+          hospitalIds: 0
+        }
+      },
+
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const gpos = await GPOModel.aggregate(pipeline);
+
+    // ✅ correct total count
+    const totalResult = await GPOModel.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "hospitals",
+          let: { gpoId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$gpo", "$$gpoId"] },
+                    { $eq: ["$user", userObjectId] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "hospitals"
+        }
+      },
+      { $match: { "hospitals.0": { $exists: true } } },
+      { $count: "total" }
+    ]);
+
+    const total = totalResult[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      data: gpos,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve GPOs and deals data",
       error: error.message
     });
   }
