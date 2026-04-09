@@ -296,7 +296,6 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
 */
 
 
-
 export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -305,7 +304,12 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
     const userId = req.query.userId as string;
 
     const skip = (page - 1) * limit;
-    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    // ✅ Safe ObjectId
+    const userObjectId =
+      userId && mongoose.Types.ObjectId.isValid(userId)
+        ? new mongoose.Types.ObjectId(userId)
+        : null;
 
     const matchStage: any = {};
     if (search) {
@@ -315,7 +319,7 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // 🔥 Step 1: Get ONLY hospitals created by this user
+      // 🔥 STEP 1: Hospitals lookup (dynamic based on user)
       {
         $lookup: {
           from: "hospitals",
@@ -323,12 +327,16 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
           pipeline: [
             {
               $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$idn", "$$idnId"] },
-                    { $eq: ["$user", userObjectId] }
-                  ]
-                }
+                $expr: userObjectId
+                  ? {
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] }
+                    ]
+                  }
+                  : {
+                    $eq: ["$idn", "$$idnId"]
+                  }
               }
             },
             {
@@ -345,18 +353,29 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
         }
       },
 
-      // ❌ REMOVE IDNs WITH NO USER HOSPITALS
+      // 🔥 STEP 2: Remove empty IDNs ONLY if userId exists
+      ...(userObjectId
+        ? [
+          {
+            $match: {
+              "hospitals.0": { $exists: true }
+            }
+          }
+        ]
+        : []),
+
+      // 🔥 STEP 3: Extract hospitalIds
       {
-        $match: {
-          "hospitals.0": { $exists: true }
+        $addFields: {
+          hospitalIds: "$hospitals._id"
         }
       },
 
-      // 🔥 Step 2: Get deals ONLY for those hospitals
+      // 🔥 STEP 4: Deals lookup
       {
         $lookup: {
           from: "deals",
-          let: { hospitalIds: "$hospitals._id" },
+          let: { hospitalIds: "$hospitalIds" },
           pipeline: [
             {
               $match: {
@@ -366,7 +385,6 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
               }
             },
             { $unwind: "$products" },
-
             {
               $lookup: {
                 from: "products",
@@ -381,7 +399,7 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
         }
       },
 
-      // 🔥 Step 3: Hospital-level aggregation
+      // 🔥 STEP 5: Hospital-level aggregation
       {
         $addFields: {
           hospitals: {
@@ -460,7 +478,7 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
         }
       },
 
-      // 🔥 Step 4: IDN totals
+      // 🔥 STEP 6: IDN total ARR
       {
         $addFields: {
           idnTotalExpectedARR: {
@@ -469,7 +487,7 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
         }
       },
 
-      // 🔥 Step 5: IDN product grouping
+      // 🔥 STEP 7: IDN product grouping
       {
         $addFields: {
           idnARRByProduct: {
@@ -509,6 +527,7 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
         }
       },
 
+      // 🔥 STEP 8: Total hospitals
       {
         $addFields: {
           totalHospitals: { $size: "$hospitals" }
@@ -517,7 +536,8 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
 
       {
         $project: {
-          deals: 0
+          deals: 0,
+          hospitalIds: 0
         }
       },
 
@@ -528,7 +548,8 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
 
     const idns = await IDN.aggregate(pipeline);
 
-    const total = await IDN.aggregate([
+    // ✅ Pagination count
+    const totalPipeline: any[] = [
       { $match: matchStage },
       {
         $lookup: {
@@ -537,30 +558,45 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
           pipeline: [
             {
               $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$idn", "$$idnId"] },
-                    { $eq: ["$user", userObjectId] }
-                  ]
-                }
+                $expr: userObjectId
+                  ? {
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] }
+                    ]
+                  }
+                  : {
+                    $eq: ["$idn", "$$idnId"]
+                  }
               }
             }
           ],
           as: "hospitals"
         }
       },
-      { $match: { "hospitals.0": { $exists: true } } },
+      ...(userObjectId
+        ? [
+          {
+            $match: {
+              "hospitals.0": { $exists: true }
+            }
+          }
+        ]
+        : []),
       { $count: "total" }
-    ]);
+    ];
+
+    const totalResult = await IDN.aggregate(totalPipeline);
+    const total = totalResult[0]?.total || 0;
 
     res.status(200).json({
       success: true,
       data: idns,
       pagination: {
-        total: total[0]?.total || 0,
+        total,
         page,
         limit,
-        totalPages: Math.ceil((total[0]?.total || 0) / limit)
+        totalPages: Math.ceil(total / limit)
       }
     });
 
