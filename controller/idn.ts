@@ -174,16 +174,10 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
     }
 
     if (userId) {
-      // Find IDNs created by the user OR IDNs containing hospitals created by the user
-      const [userIdnIds, userHospitalIdnIds] = await Promise.all([
-        IDN.find({ user: userId }).distinct('_id'),
-        Hospital.find({ user: userId }).distinct('idn')
-      ]);
+      // ONLY find IDNs containing hospitals created by the user
+      const userHospitalIdnIds = await Hospital.find({ user: userId }).distinct('idn');
 
-      // Combine unique IDN IDs
-      const relevantIdnIds = [...new Set([...userIdnIds.map(id => id.toString()), ...userHospitalIdnIds.map(id => id.toString())])];
-
-      query._id = { $in: relevantIdnIds };
+      query._id = { $in: userHospitalIdnIds.map(id => id.toString()) };
     }
 
     // 3. Fetch IDNs with pagination and search
@@ -197,21 +191,36 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
 
     // 4. Aggregate data for each IDN
     const idnsWithDeals = await Promise.all(idns.map(async (idn: any) => {
-      const hospitals = await Hospital.find({ idn: idn._id })
+      // Hospitals belonging to this IDN (Filter by user if userId provided)
+      const hospitalQuery: any = { idn: idn._id };
+      if (userId) {
+        hospitalQuery.user = userId;
+      }
+
+      const hospitals = await Hospital.find(hospitalQuery)
         .populate('gpo', 'name')
         .lean();
 
       const allDeals = await Deal.find({ idn: idn._id })
-        .populate('products')
+        .populate({
+          path: 'products',
+          populate: {
+            path: 'product'
+          }
+        })
         .lean();
 
-      console.log(JSON.stringify(allDeals, null, 2));
+      // console.log(JSON.stringify(allDeals, null, 2));
 
 
       let idnTotalExpectedARR = 0;
       const idnARRByProduct: Record<string, number> = {};
 
-      allDeals.forEach((deal: any) => {
+      // Only aggregate deals for the hospitals belonging to the user (if userId provided)
+      const allowedHospitalIds = hospitals.map(h => h._id.toString());
+      const filteredDeals = allDeals.filter(d => allowedHospitalIds.includes(d.hospital.toString()));
+
+      filteredDeals.forEach((deal: any) => {
         if (deal.products && Array.isArray(deal.products)) {
           deal.products.forEach((p: any) => {
             const amount = p.dealAmount || 0;

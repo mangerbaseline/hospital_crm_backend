@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import GPOModel from '../model/Gpo.ts';
 import Deal from '../model/deal.ts';
+import Hospital from '../model/Hospital.ts';
+import Product from '../model/Product.ts';
 
 export const getGPOs = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -154,59 +156,134 @@ export const updateGPO = async (req: Request, res: Response): Promise<void> => {
 };
 
 
-/*
-export const getGPOsWithDeals = async (req: Request, res: Response): Promise<void> => {
+export const getAllGPODeals = async (req: Request, res: Response): Promise<void> => {
   try {
+    // 1. Extract query parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
-    const searchQuery = search ? { name: { $regex: search, $options: "i" }, } : {};
+    const userId = req.query.userId as string;
 
+    const skip = (page - 1) * limit;
 
-    // 1. Get GPOs with hospitals
-    const gpos = await GPOModel.find(searchQuery)
-      .populate("hospitals")
-      .sort({ createdAt: -1 });
+    // 2. Build search and filter query
+    const query: any = {};
 
+    if (search) {
+      query.name = { $regex: search, $options: "i" };
+    }
 
-    // 2. Extract all hospital IDs
-    const hospitalIds = gpos.flatMap((gpo: any) =>
-      gpo.hospitals.map((h: any) => h._id)
-    );
+    if (userId) {
+      // ONLY find GPOs containing hospitals created by the user
+      const userHospitalGpoIds = await Hospital.find({ user: userId }).distinct('gpo');
+      
+      query._id = { $in: userHospitalGpoIds.map(id => id.toString()) };
+    }
 
-    // 3. Get deals for those hospitals
-    const deals = await Deal.find({
-      hospital: { $in: hospitalIds },
-    })
-      .populate("hospital")
-      .populate("user", "name email")
-      .populate("products.product");
+    // 3. Fetch GPOs with pagination and search
+    const gpos = await GPOModel.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    // 4. Map deals back to GPOs
-    const result = gpos.map((gpo: any) => {
-      const gpoHospitalIds = gpo.hospitals.map((h: any) => h._id.toString());
+    const totalGPOs = await GPOModel.countDocuments(query);
 
-      const gpoDeals = deals.filter((deal: any) =>
-        gpoHospitalIds.includes(deal.hospital._id.toString())
-      );
+    // 4. Aggregate data for each GPO
+    const gposWithDeals = await Promise.all(gpos.map(async (gpo: any) => {
+      // Hospitals belonging to this GPO (Filter by user if userId provided)
+      const hospitalQuery: any = { gpo: gpo._id };
+      if (userId) {
+        hospitalQuery.user = userId;
+      }
+
+      const hospitals = await Hospital.find(hospitalQuery)
+        .populate('idn', 'name') // GPO details often list IDN info for hospitals
+        .lean();
+
+      // All deals for this GPO to aggregate ARR
+      const allDeals = await Deal.find({ gpo: gpo._id })
+        .populate({
+          path: 'products.product',
+          model: 'Product',
+          select: 'name'
+        })
+        .lean();
+
+      let gpoTotalExpectedARR = 0;
+      const gpoARRByProduct: Record<string, number> = {};
+
+      // Only aggregate deals for the hospitals belonging to the user (if userId provided)
+      const allowedHospitalIds = hospitals.map(h => h._id.toString());
+      const filteredDeals = allDeals.filter(d => allowedHospitalIds.includes(d.hospital.toString()));
+
+      filteredDeals.forEach((deal: any) => {
+        if (deal.products && Array.isArray(deal.products)) {
+          deal.products.forEach((p: any) => {
+            const amount = p.dealAmount || 0;
+            gpoTotalExpectedARR += amount;
+
+            const productName = (p.product && typeof p.product === 'object' && p.product.name)
+              ? p.product.name
+              : 'Unknown';
+
+            gpoARRByProduct[productName] = (gpoARRByProduct[productName] || 0) + amount;
+          });
+        }
+      });
+
+      const hospitalsWithData = hospitals.map(hospital => {
+        const hospitalDeals = allDeals.filter(d => d.hospital.toString() === hospital._id.toString());
+
+        let hospitalTotalExpectedARR = 0;
+        const hospitalARRByProduct: Record<string, number> = {};
+
+        hospitalDeals.forEach((deal: any) => {
+          if (deal.products && Array.isArray(deal.products)) {
+            deal.products.forEach((p: any) => {
+              const amount = p.dealAmount || 0;
+              hospitalTotalExpectedARR += amount;
+
+              const productName = (p.product && typeof p.product === 'object' && p.product.name)
+                ? p.product.name
+                : 'Unknown';
+
+              hospitalARRByProduct[productName] = (hospitalARRByProduct[productName] || 0) + amount;
+            });
+          }
+        });
+
+        return {
+          ...hospital,
+          totalExpectedARR: hospitalTotalExpectedARR,
+          expectedARRByProduct: Object.entries(hospitalARRByProduct).map(([name, amount]) => ({ name, amount }))
+        };
+      });
 
       return {
-        ...gpo.toObject(),
-        deals: gpoDeals,
+        ...gpo,
+        totalHospitals: hospitals.length,
+        gpoTotalExpectedARR,
+        gpoARRByProduct: Object.entries(gpoARRByProduct).map(([name, amount]) => ({ name, amount })),
+        hospitals: hospitalsWithData
       };
-    });
+    }));
 
     res.status(200).json({
       success: true,
-      data: result,
+      data: gposWithDeals,
+      pagination: {
+        total: totalGPOs,
+        page,
+        limit,
+        totalPages: Math.ceil(totalGPOs / limit)
+      }
     });
-
   } catch (error: any) {
-    console.error(error);
-
     res.status(500).json({
       success: false,
-      message: "Failed to fetch GPOs with deals",
-      error: error.message,
+      message: 'Failed to retrieve GPOs and deals data',
+      error: error.message
     });
   }
 };
-*/
