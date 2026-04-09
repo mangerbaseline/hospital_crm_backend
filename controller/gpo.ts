@@ -176,7 +176,7 @@ export const getAllGPODeals = async (req: Request, res: Response): Promise<void>
     if (userId) {
       // ONLY find GPOs containing hospitals created by the user
       const userHospitalGpoIds = await Hospital.find({ user: userId }).distinct('gpo');
-      
+
       query._id = { $in: userHospitalGpoIds.map(id => id.toString()) };
     }
 
@@ -204,9 +204,10 @@ export const getAllGPODeals = async (req: Request, res: Response): Promise<void>
       // All deals for this GPO to aggregate ARR
       const allDeals = await Deal.find({ gpo: gpo._id })
         .populate({
-          path: 'products.product',
-          model: 'Product',
-          select: 'name'
+          path: 'products',
+          populate: {
+            path: 'product'
+          }
         })
         .lean();
 
