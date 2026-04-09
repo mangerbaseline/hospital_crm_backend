@@ -13,6 +13,8 @@ router.get('/:id', getGPOById);
 router.post('/create', createGPO);
 router.put('/:id', updateGPO);
 router.delete('/:id', deleteGPO);
-// router.get('/deal/gpo-with-deals', getGPOsWithDeals);
+
+router.get('/all-gpos-deals', getAllGPODeals);
+
 
 export default router;
