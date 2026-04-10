@@ -683,6 +683,9 @@ export const getAllGPODeals = async (req: Request, res: Response): Promise<void>
                 _id: "$$h._id",
                 hospitalName: "$$h.hospitalName",
                 idn: "$$h.idn",
+                city: "$$h.city",
+                state: "$$h.state",
+                zip: "$$h.zip",
 
                 totalExpectedARR: {
                   $sum: {

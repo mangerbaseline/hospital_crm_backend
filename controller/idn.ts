@@ -410,6 +410,9 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
                 _id: "$$h._id",
                 hospitalName: "$$h.hospitalName",
                 gpo: "$$h.gpo",
+                city: "$$h.city",
+                state: "$$h.state",
+                zip: "$$h.zip",
 
                 totalExpectedARR: {
                   $sum: {
