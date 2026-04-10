@@ -109,43 +109,6 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-
-
-
-/*
-export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    if (typeof id !== 'string') {
-      res.status(400).json({ success: false, message: 'Invalid ID' });
-      return;
-    }
-    const hospital = await Hospital.findById(id)
-      .populate("idn", 'name')
-      .populate("gpo", 'name');
-
-    if (!hospital) {
-      res.status(404).json({
-        success: false,
-        message: 'Hospital not found'
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      data: hospital
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching hospital',
-      error: error.message
-    });
-  }
-};
-*/
-
 export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
