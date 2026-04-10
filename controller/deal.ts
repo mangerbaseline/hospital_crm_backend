@@ -786,6 +786,7 @@ export const deleteDeal = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
+/*
 export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
   try {
     const { dealId, hospitalId, productId, stage } = req.body;
@@ -818,6 +819,73 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
         _id: new mongoose.Types.ObjectId(dealId as string),
         hospital: new mongoose.Types.ObjectId(hospitalId as string),
         "products.product": new mongoose.Types.ObjectId(productId as string)
+      },
+      {
+        $set: {
+          "products.$.stage": stage
+        }
+      },
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal or product not found"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Stage updated successfully",
+      data: updatedDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update stage",
+      error: error.message
+    });
+  }
+};
+*/
+
+
+export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { dealId, productId, stage } = req.body;
+
+    // ✅ Validation
+    if (!dealId || !productId || !stage) {
+      res.status(400).json({
+        success: false,
+        message: "dealId, productId and stage are required"
+      });
+      return;
+    }
+
+    // ✅ Validate ObjectIds
+    if (
+      !mongoose.Types.ObjectId.isValid(dealId) ||
+      !mongoose.Types.ObjectId.isValid(productId)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid ObjectId(s)"
+      });
+      return;
+    }
+
+    // ✅ Update stage (no hospital filter)
+    const updatedDeal = await Deal.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(dealId),
+        "products.product": new mongoose.Types.ObjectId(productId)
       },
       {
         $set: {
