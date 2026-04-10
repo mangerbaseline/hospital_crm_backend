@@ -497,9 +497,6 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
   }
 };
 
-
-
-
 export const getDealById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -520,9 +517,6 @@ export const getDealById = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
-/**
- * Create a new deal
- */
 export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const dealData = {
@@ -546,9 +540,6 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
-/**
- * Update an existing deal
- */
 export const updateDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -577,9 +568,6 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-/**
- * Delete a deal
- */
 export const deleteDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -594,5 +582,73 @@ export const deleteDeal = async (req: Request, res: Response): Promise<void> => 
     res.status(200).json({ success: true, message: 'Deal deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Error deleting deal', error: error.message });
+  }
+};
+
+
+export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { dealId, hospitalId, productId, stage } = req.body;
+
+    // ✅ Validation
+    if (!dealId || !hospitalId || !productId || !stage) {
+      res.status(400).json({
+        success: false,
+        message: "dealId, hospitalId, productId and stage are required"
+      });
+      return;
+    }
+
+    // ✅ Validate ObjectIds
+    if (
+      !mongoose.Types.ObjectId.isValid(dealId) ||
+      !mongoose.Types.ObjectId.isValid(hospitalId) ||
+      !mongoose.Types.ObjectId.isValid(productId)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid ObjectId(s)"
+      });
+      return;
+    }
+
+    // ✅ Update stage
+    const updatedDeal = await Deal.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(dealId as string),
+        hospital: new mongoose.Types.ObjectId(hospitalId as string),
+        "products.product": new mongoose.Types.ObjectId(productId as string)
+      },
+      {
+        $set: {
+          "products.$.stage": stage
+        }
+      },
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal or product not found"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Stage updated successfully",
+      data: updatedDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update stage",
+      error: error.message
+    });
   }
 };
