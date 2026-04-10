@@ -125,7 +125,7 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
   }
 };
 */
-
+/*
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -329,7 +329,173 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
     });
   }
 };
+*/
 
+export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const searchQuery = (req.query.search as string) || "";
+    const userId = req.query.userId as string;
+
+    const matchStage: any = {};
+
+    // ✅ Filter by userId
+    if (userId) {
+      matchStage.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    const pipeline: any[] = [
+      { $match: matchStage },
+
+      // ✅ Unwind products
+      {
+        $unwind: {
+          path: "$products",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // ✅ Filter by stage
+      ...(searchQuery
+        ? [
+          {
+            $match: {
+              "products.stage": {
+                $regex: searchQuery,
+                $options: "i"
+              }
+            }
+          }
+        ]
+        : []),
+
+      // ✅ Lookup hospital
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "hospital",
+          foreignField: "_id",
+          as: "hospital"
+        }
+      },
+      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+
+      // ✅ Lookup IDN
+      {
+        $lookup: {
+          from: "idns",
+          localField: "hospital.idn",
+          foreignField: "_id",
+          as: "hospital.idn"
+        }
+      },
+      {
+        $unwind: {
+          path: "$hospital.idn",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // ✅ Lookup GPO
+      {
+        $lookup: {
+          from: "gpos",
+          localField: "hospital.gpo",
+          foreignField: "_id",
+          as: "hospital.gpo"
+        }
+      },
+      {
+        $unwind: {
+          path: "$hospital.gpo",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // ✅ Lookup product
+      {
+        $lookup: {
+          from: "products",
+          localField: "products.product",
+          foreignField: "_id",
+          as: "products.product"
+        }
+      },
+      {
+        $unwind: {
+          path: "$products.product",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // ✅ Lookup user
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+
+      // ✅ Final shape
+      {
+        $project: {
+          dealId: "$_id",
+
+          hospital: {
+            hospitalName: "$hospital.hospitalName",
+            city: "$hospital.city",
+            state: "$hospital.state",
+            zip: "$hospital.zip",
+            idn: {
+              _id: "$hospital.idn._id",
+              name: "$hospital.idn.name"
+            },
+            gpo: {
+              _id: "$hospital.gpo._id",
+              name: "$hospital.gpo.name"
+            }
+          },
+
+          product: "$products.product",
+          dealAmount: "$products.dealAmount",
+          stage: "$products.stage",
+          expectedCloseDate: "$products.expectedCloseDate",
+          dealDate: "$products.dealDate",
+
+          user: {
+            _id: "$user._id",
+            name: "$user.name",
+            email: "$user.email"
+          },
+
+          notes: 1,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      },
+
+      // ✅ Sort
+      { $sort: { createdAt: -1 } }
+    ];
+
+    const data = await Deal.aggregate(pipeline);
+
+    res.status(200).json({
+      success: true,
+      totalDeals: data.length,
+      data
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve deals",
+      error: error.message
+    });
+  }
+};
 
 
 
