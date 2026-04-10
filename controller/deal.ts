@@ -338,7 +338,6 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 
     const matchStage: any = {};
 
-    // ✅ Filter by userId
     if (userId) {
       matchStage.user = new mongoose.Types.ObjectId(userId);
     }
@@ -346,146 +345,166 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // ✅ Unwind products
       {
-        $unwind: {
-          path: "$products",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Filter by stage
-      ...(searchQuery
-        ? [
-          {
-            $match: {
-              "products.stage": {
-                $regex: searchQuery,
-                $options: "i"
+        $facet: {
+          // =========================
+          // ✅ 1. DEALS DATA
+          // =========================
+          deals: [
+            {
+              $unwind: {
+                path: "$products",
+                preserveNullAndEmptyArrays: true
               }
-            }
-          }
-        ]
-        : []),
-
-      // ✅ Lookup hospital
-      {
-        $lookup: {
-          from: "hospitals",
-          localField: "hospital",
-          foreignField: "_id",
-          as: "hospital"
-        }
-      },
-      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
-
-      // ✅ Lookup IDN
-      {
-        $lookup: {
-          from: "idns",
-          localField: "hospital.idn",
-          foreignField: "_id",
-          as: "hospital.idn"
-        }
-      },
-      {
-        $unwind: {
-          path: "$hospital.idn",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Lookup GPO
-      {
-        $lookup: {
-          from: "gpos",
-          localField: "hospital.gpo",
-          foreignField: "_id",
-          as: "hospital.gpo"
-        }
-      },
-      {
-        $unwind: {
-          path: "$hospital.gpo",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Lookup product
-      {
-        $lookup: {
-          from: "products",
-          localField: "products.product",
-          foreignField: "_id",
-          as: "products.product"
-        }
-      },
-      {
-        $unwind: {
-          path: "$products.product",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Lookup user
-      {
-        $lookup: {
-          from: "users",
-          localField: "user",
-          foreignField: "_id",
-          as: "user"
-        }
-      },
-      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
-
-      // ✅ Final shape
-      {
-        $project: {
-          dealId: "$_id",
-
-          hospital: {
-            hospitalName: "$hospital.hospitalName",
-            city: "$hospital.city",
-            state: "$hospital.state",
-            zip: "$hospital.zip",
-            idn: {
-              _id: "$hospital.idn._id",
-              name: "$hospital.idn.name"
             },
-            gpo: {
-              _id: "$hospital.gpo._id",
-              name: "$hospital.gpo.name"
+
+            ...(searchQuery
+              ? [
+                {
+                  $match: {
+                    "products.stage": {
+                      $regex: searchQuery,
+                      $options: "i"
+                    }
+                  }
+                }
+              ]
+              : []),
+
+            // Lookups (same as yours)
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "hospital",
+                foreignField: "_id",
+                as: "hospital"
+              }
+            },
+            { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+
+            {
+              $lookup: {
+                from: "products",
+                localField: "products.product",
+                foreignField: "_id",
+                as: "products.product"
+              }
+            },
+            {
+              $unwind: {
+                path: "$products.product",
+                preserveNullAndEmptyArrays: true
+              }
+            },
+
+            {
+              $lookup: {
+                from: "users",
+                localField: "user",
+                foreignField: "_id",
+                as: "user"
+              }
+            },
+            { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+
+            {
+              $project: {
+                dealId: "$_id",
+
+                hospital: {
+                  _id: "$hospital._id",
+                  hospitalName: "$hospital.hospitalName",
+                  city: "$hospital.city",
+                  state: "$hospital.state",
+                  zip: "$hospital.zip"
+                },
+
+                product: "$products.product",
+                dealAmount: "$products.dealAmount",
+                stage: "$products.stage",
+
+                user: {
+                  _id: "$user._id",
+                  name: "$user.name"
+                },
+
+                createdAt: 1
+              }
+            },
+
+            { $sort: { createdAt: -1 } }
+          ],
+
+          // =========================
+          // ✅ 2. TOTAL HOSPITALS
+          // =========================
+          totalHospitals: [
+            {
+              $group: {
+                _id: "$hospital"
+              }
+            },
+            {
+              $count: "count"
             }
-          },
+          ],
 
-          product: "$products.product",
-          dealAmount: "$products.dealAmount",
-          stage: "$products.stage",
-          expectedCloseDate: "$products.expectedCloseDate",
-          dealDate: "$products.dealDate",
+          // =========================
+          // ✅ 3. PRODUCT REVENUE (ARR)
+          // =========================
+          productRevenue: [
+            {
+              $unwind: "$products"
+            },
+            {
+              $group: {
+                _id: "$products.product",
+                TotalARR: {
+                  $sum: {
+                    $ifNull: ["$products.dealAmount", 0]
+                  }
+                }
+              }
+            },
 
-          user: {
-            _id: "$user._id",
-            name: "$user.name",
-            email: "$user.email"
-          },
+            // ✅ Lookup product details
+            {
+              $lookup: {
+                from: "products",
+                localField: "_id",
+                foreignField: "_id",
+                as: "product"
+              }
+            },
+            { $unwind: "$product" },
 
-          notes: 1,
-          createdAt: 1,
-          updatedAt: 1
+            {
+              $project: {
+                _id: 0,
+                productId: "$product._id",
+                productName: "$product.name",
+                TotalARR: 1
+              }
+            },
+
+            { $sort: { TotalARR: -1 } }
+          ]
         }
-      },
-
-      // ✅ Sort
-      { $sort: { createdAt: -1 } }
+      }
     ];
 
-    const data = await Deal.aggregate(pipeline);
+    const result = await Deal.aggregate(pipeline);
+
+    const deals = result[0]?.deals || [];
+    const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
+    const productRevenue = result[0]?.productRevenue || [];
 
     res.status(200).json({
       success: true,
-      totalDeals: data.length,
-      data
+      totalDeals: deals.length,
+      totalHospitals,
+      productRevenue,
+      data: deals
     });
 
   } catch (error: any) {
@@ -652,3 +671,7 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
     });
   }
 };
+
+
+export const getDealStats = async () => {
+}
