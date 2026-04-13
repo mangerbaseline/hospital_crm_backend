@@ -17,6 +17,7 @@ import dealRoutes from './routes/deal.ts';
 import taskRoutes from './routes/task.ts';
 import noteRoutes from './routes/notes.ts';
 import callLogRoutes from './routes/callLogs.ts';
+import activityRoutes from './routes/activity.ts';
 
 // Load environment variables
 dotenv.config();
@@ -77,6 +78,7 @@ app.use('/api/deal', dealRoutes);
 app.use('/api/task', taskRoutes);
 app.use('/api/note', noteRoutes);
 app.use('/api/call-log', callLogRoutes);
+app.use('/api/activity', activityRoutes);
 
 // Start server
 const startServer = async () => {

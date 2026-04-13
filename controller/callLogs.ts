@@ -125,7 +125,7 @@ export const createCallLog = async (req: AuthRequest, res: Response): Promise<vo
 
     const newCallLog = new CallLogs(callLogData);
     await newCallLog.save();
-    await newCallLog.populate([{ path: 'hospital', select: 'hospitalName' }, { path: 'contact' }]);
+    await newCallLog.populate([{ path: 'hospital', select: 'hospitalName' }, { path: 'contact', select: 'firstName' }]);
 
     res.status(201).json({ success: true, data: newCallLog });
   } catch (error: any) {
@@ -136,7 +136,7 @@ export const createCallLog = async (req: AuthRequest, res: Response): Promise<vo
 export const updateCallLog = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const updatedCallLog = await CallLogs.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate([{ path: 'hospital', select: 'hospitalName' }, { path: 'contact' }]);
+    const updatedCallLog = await CallLogs.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate([{ path: 'hospital', select: 'hospitalName' }, { path: 'contact', select: 'firstName' }]);
 
     if (!updatedCallLog) {
       res.status(404).json({ success: false, message: 'Call log not found' });
