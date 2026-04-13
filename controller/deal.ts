@@ -856,6 +856,7 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
 */
 
 
+
 export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
   try {
     const { dealId, productId, stage } = req.body;

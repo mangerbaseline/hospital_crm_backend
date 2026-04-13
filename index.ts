@@ -14,6 +14,9 @@ import userRoutes from './routes/user.ts';
 import authRoutes from './routes/auth.ts';
 import productRoutes from './routes/product.ts';
 import dealRoutes from './routes/deal.ts';
+import taskRoutes from './routes/task.ts';
+import noteRoutes from './routes/notes.ts';
+import callLogRoutes from './routes/callLogs.ts';
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +74,9 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/product', productRoutes);
 app.use('/api/deal', dealRoutes);
+app.use('/api/task', taskRoutes);
+app.use('/api/note', noteRoutes);
+app.use('/api/call-log', callLogRoutes);
 
 // Start server
 const startServer = async () => {
