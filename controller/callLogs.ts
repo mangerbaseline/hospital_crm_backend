@@ -33,11 +33,24 @@ export const getCallLogs = async (req: Request, res: Response): Promise<void> =>
 
     const pipeline: any[] = [
       { $match: matchStage },
+      // ✅ Optimized lookup for hospital
       {
         $lookup: {
           from: "hospitals",
-          localField: "hospital",
-          foreignField: "_id",
+          let: { hospitalId: "$hospital" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$hospitalId"] }
+              }
+            },
+            {
+              $project: {
+                _id: 1,
+                hospitalName: 1
+              }
+            }
+          ],
           as: "hospital"
         }
       },
@@ -90,7 +103,7 @@ export const getCallLogs = async (req: Request, res: Response): Promise<void> =>
 export const getCallLogById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const callLog = await CallLogs.findById(id).populate('hospital').populate('contact');
+    const callLog = await CallLogs.findById(id).populate('hospital', 'hospitalName').populate('contact');
 
     if (!callLog) {
       res.status(404).json({ success: false, message: 'Call log not found' });
@@ -112,7 +125,7 @@ export const createCallLog = async (req: AuthRequest, res: Response): Promise<vo
 
     const newCallLog = new CallLogs(callLogData);
     await newCallLog.save();
-    await newCallLog.populate(['hospital', 'contact']);
+    await newCallLog.populate([{ path: 'hospital', select: 'hospitalName' }, { path: 'contact' }]);
 
     res.status(201).json({ success: true, data: newCallLog });
   } catch (error: any) {
@@ -123,7 +136,7 @@ export const createCallLog = async (req: AuthRequest, res: Response): Promise<vo
 export const updateCallLog = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const updatedCallLog = await CallLogs.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate(['hospital', 'contact']);
+    const updatedCallLog = await CallLogs.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate([{ path: 'hospital', select: 'hospitalName' }, { path: 'contact' }]);
 
     if (!updatedCallLog) {
       res.status(404).json({ success: false, message: 'Call log not found' });

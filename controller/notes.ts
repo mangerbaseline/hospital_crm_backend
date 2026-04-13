@@ -28,11 +28,24 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
 
     const pipeline: any[] = [
       { $match: matchStage },
+      // ✅ Optimized lookup for hospital
       {
         $lookup: {
           from: "hospitals",
-          localField: "hospital",
-          foreignField: "_id",
+          let: { hospitalId: "$hospital" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$hospitalId"] }
+              }
+            },
+            {
+              $project: {
+                _id: 1,
+                hospitalName: 1
+              }
+            }
+          ],
           as: "hospital"
         }
       },
@@ -76,7 +89,7 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
 export const getNoteById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const note = await Notes.findById(id).populate('hospital');
+    const note = await Notes.findById(id).populate('hospital', 'hospitalName');
 
     if (!note) {
       res.status(404).json({ success: false, message: 'Note not found' });
@@ -98,7 +111,7 @@ export const createNote = async (req: AuthRequest, res: Response): Promise<void>
 
     const newNote = new Notes(noteData);
     await newNote.save();
-    await newNote.populate('hospital');
+    await newNote.populate('hospital', 'hospitalName');
 
     res.status(201).json({ success: true, data: newNote });
   } catch (error: any) {
@@ -109,7 +122,7 @@ export const createNote = async (req: AuthRequest, res: Response): Promise<void>
 export const updateNote = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const updatedNote = await Notes.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate('hospital');
+    const updatedNote = await Notes.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate('hospital', 'hospitalName');
 
     if (!updatedNote) {
       res.status(404).json({ success: false, message: 'Note not found' });
