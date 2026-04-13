@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Task from '../model/Task.ts';
 import Notes from '../model/Notes.ts';
 import CallLogs from '../model/CallLogs.ts';
@@ -22,7 +23,7 @@ export const getActivities = async (req: Request, res: Response): Promise<void> 
             // 2. Union with Notes
             {
                 $unionWith: {
-                    coll: 'notes', 
+                    coll: 'notes',
                     pipeline: [
                         { $match: filter },
                         { $addFields: { activityType: 'note' } }
@@ -58,7 +59,7 @@ export const getActivities = async (req: Request, res: Response): Promise<void> 
                 }
             },
             { $unwind: { path: '$hospital', preserveNullAndEmptyArrays: true } },
-            
+
             {
                 $lookup: {
                     from: 'contacts',
@@ -83,6 +84,109 @@ export const getActivities = async (req: Request, res: Response): Promise<void> 
         res.status(500).json({
             success: false,
             message: "Failed to aggregate activities",
+            error: error.message
+        });
+    }
+};
+
+export const deleteActivity = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { id, type } = req.body;
+
+        if (!id || !type) {
+            res.status(400).json({ success: false, message: "ID and type are required" });
+            return;
+        }
+
+        let model;
+        switch (type.toLowerCase()) {
+            case 'task':
+                model = Task;
+                break;
+            case 'note':
+                model = Notes;
+                break;
+            case 'calllog':
+                model = CallLogs;
+                break;
+            default:
+                res.status(400).json({ success: false, message: "Invalid activity type" });
+                return;
+        }
+
+        // Verify ownership (or existence) before deleting
+        const activity = await (model as any).findOneAndDelete({
+            _id: new mongoose.Types.ObjectId(id),
+            user: (req as any).user?._id
+        });
+
+        if (!activity) {
+            res.status(404).json({
+                success: false,
+                message: "Activity not found or you don't have permission to delete it"
+            });
+            return;
+        }
+
+        res.status(200).json({ success: true, message: `${type} deleted successfully` });
+
+    } catch (error: any) {
+        res.status(500).json({
+            success: false,
+            message: "Failed to delete activity",
+            error: error.message
+        });
+    }
+};
+
+export const createActivity = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { type, data } = req.body;
+
+        if (!type || !data) {
+            res.status(400).json({ success: false, message: "Type and data are required" });
+            return;
+        }
+
+        let model;
+        let populateOptions: any = [{ path: 'hospital', select: 'hospitalName' }];
+
+        switch (type.toLowerCase()) {
+            case 'task':
+                model = Task;
+                break;
+            case 'note':
+                model = Notes;
+                break;
+            case 'calllog':
+                model = CallLogs;
+                populateOptions.push({ path: 'contact', select: 'firstName' });
+                break;
+            default:
+                res.status(400).json({ success: false, message: "Invalid activity type" });
+                return;
+        }
+
+        // Add user ID to the data
+        const activityData = {
+            ...data,
+            user: (req as any).user?._id
+        };
+
+        const newActivity = new (model as any)(activityData);
+        await newActivity.save();
+        await newActivity.populate(populateOptions);
+
+        res.status(201).json({
+            success: true,
+            message: `${type} created successfully`,
+            data: newActivity
+        });
+
+    } catch (error: any) {
+        res.status(400).json({
+            success: false,
+            message: `Failed to create ${req.body.type || 'activity'}`,
             error: error.message
         });
     }
