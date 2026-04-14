@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import morgan from 'morgan';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 
 import hospitalRoutes from './routes/hospital.ts';
 import idnRoutes from './routes/idn.ts';
@@ -18,6 +19,8 @@ import taskRoutes from './routes/task.ts';
 import noteRoutes from './routes/notes.ts';
 import callLogRoutes from './routes/callLogs.ts';
 import activityRoutes from './routes/activity.ts';
+import graphRoutes from './routes/graph.ts';
+import documentRoutes from "./routes/document.ts";
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +51,8 @@ app.use(morgan('dev'));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
 
 // Connect to MongoDB
 const connectDB = async () => {
@@ -79,6 +84,8 @@ app.use('/api/task', taskRoutes);
 app.use('/api/note', noteRoutes);
 app.use('/api/call-log', callLogRoutes);
 app.use('/api/activity', activityRoutes);
+app.use('/api/graph', graphRoutes);
+app.use("/api/document", documentRoutes);
 
 // Start server
 const startServer = async () => {
