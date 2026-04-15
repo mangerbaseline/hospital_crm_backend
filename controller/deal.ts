@@ -467,42 +467,43 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
           from: "deals",
           let: { productId: "$_id" },
           pipeline: [
-            { $match: matchStage },
-            { $unwind: "$products" },
-
-            ...(productId && mongoose.Types.ObjectId.isValid(productId)
+            // 🔥 USER FILTER (important)
+            ...(userId && mongoose.Types.ObjectId.isValid(userId)
               ? [
                 {
                   $match: {
-                    $expr: {
-                      $eq: [
-                        "$products.product",
-                        new mongoose.Types.ObjectId(productId)
-                      ]
-                    }
+                    user: new mongoose.Types.ObjectId(userId)
                   }
                 }
               ]
-              : [])
+              : []),
+
+            { $unwind: "$products" },
+
+            // 🔥 PRODUCT MATCH (correct place)
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$products.product", "$$productId"]
+                }
+              }
+            }
           ],
           as: "dealData"
         }
       },
+
+      // =========================
+      // 🔥 CORRECT ARR SUM
+      // =========================
       {
         $addFields: {
           ARR: {
-            $sum: {
-              $map: {
-                input: "$dealData",
-                as: "d",
-                in: {
-                  $ifNull: ["$$d.products.dealAmount", 0]
-                }
-              }
-            }
+            $sum: "$dealData.products.dealAmount"
           }
         }
       },
+
       {
         $project: {
           _id: 0,
@@ -511,6 +512,7 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
           ARR: 1
         }
       },
+
       { $sort: { ARR: -1 } }
     ]);
 
