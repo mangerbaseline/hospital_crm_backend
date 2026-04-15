@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Deal from '../model/deal.ts';
 import mongoose from 'mongoose';
 import Product from '../model/Product.ts';
-
+import Hospital from '../model/Hospital.ts';
 
 /*
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -1098,6 +1098,117 @@ export const updateProductInDeal = async (req: Request, res: Response): Promise<
     res.status(500).json({
       success: false,
       message: "Failed to update product",
+      error: error.message
+    });
+  }
+};
+
+
+
+export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized"
+      });
+      return;
+    }
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    // 🔥 1. My hospitals
+    const myHospitals = await Hospital.find({ user: objectUserId }).select("_id");
+    const myHospitalIds = myHospitals.map(h => h._id);
+
+    // 🔥 2. Aggregation
+    const dealStats = await Deal.aggregate([
+      {
+        $match: {
+          user: objectUserId
+        }
+      },
+      {
+        $unwind: "$products"
+      },
+      {
+        $group: {
+          _id: null,
+          totalPipelineAmount: {
+            $sum: "$products.dealAmount"
+          },
+          closedWonAmount: {
+            $sum: {
+              $cond: [
+                { $eq: ["$products.stage", "Closed Won"] },
+                "$products.dealAmount",
+                0
+              ]
+            }
+          },
+          hospitalIdsFromDeals: {
+            $addToSet: "$hospital"
+          },
+          // 🔥 stage-wise raw data
+          stages: {
+            $push: {
+              stage: "$products.stage",
+              amount: "$products.dealAmount"
+            }
+          }
+        }
+      }
+    ]);
+
+    const stats = dealStats[0] || {
+      totalPipelineAmount: 0,
+      closedWonAmount: 0,
+      hospitalIdsFromDeals: [],
+      stages: []
+    };
+
+    // 🔥 3. Unique hospitals
+    const uniqueHospitalIds = new Set([
+      ...myHospitalIds.map(id => id.toString()),
+      ...stats.hospitalIdsFromDeals.map((id: any) => id.toString())
+    ]);
+
+    // 🔥 4. Stage-wise aggregation (JS side)
+    const stageMap: Record<string, number> = {};
+
+    stats.stages.forEach((item: any) => {
+      if (!item.stage) return;
+
+      if (!stageMap[item.stage]) {
+        stageMap[item.stage] = 0;
+      }
+
+      stageMap[item.stage] += item.amount || 0;
+    });
+
+    // 🔥 5. Convert to array (clean response)
+    const pipelineData = Object.keys(stageMap).map(stage => ({
+      stage,
+      amount: stageMap[stage]
+    }));
+
+    // 🔥 6. Final response
+    res.status(200).json({
+      success: true,
+      data: {
+        totalHospitals: uniqueHospitalIds.size,
+        totalPipelineAmount: stats.totalPipelineAmount || 0,
+        closedWonAmount: stats.closedWonAmount || 0,
+        pipeline: pipelineData // 👈 NEW
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard stats",
       error: error.message
     });
   }
