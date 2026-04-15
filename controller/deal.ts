@@ -1277,34 +1277,48 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
-    // 🔥 Run independent counts in parallel (faster)
+    // 🔥 Parallel counts
     const [
       totalHospitals,
       totalHospitalsInDB,
       totalProductsInDB
     ] = await Promise.all([
-      Hospital.countDocuments({ user: objectUserId }), // user-specific
-      Hospital.countDocuments({}),                    // global hospitals
-      Product.countDocuments({})                      // global products
+      Hospital.countDocuments({ user: objectUserId }),
+      Hospital.countDocuments({}),
+      Product.countDocuments({})
     ]);
 
-    // 🔥 SINGLE aggregation for dashboard stats
+    // 🔥 Aggregation
     const result = await Deal.aggregate([
       { $match: { user: objectUserId } },
       { $unwind: "$products" },
 
       {
         $facet: {
-          // ✅ TOTALS
+          // ================= TOTALS =================
           totals: [
             {
               $group: {
                 _id: null,
-                totalPipelineAmount: { $sum: "$products.dealAmount" },
+
+                totalPipelineAmount: {
+                  $sum: "$products.dealAmount"
+                },
+
                 closedWonAmount: {
                   $sum: {
                     $cond: [
                       { $eq: ["$products.stage", "Closed Won"] },
+                      "$products.dealAmount",
+                      0
+                    ]
+                  }
+                },
+
+                implementedAmount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Implemented"] },
                       "$products.dealAmount",
                       0
                     ]
@@ -1314,7 +1328,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
             }
           ],
 
-          // ✅ PIPELINE
+          // ================= PIPELINE =================
           pipeline: [
             {
               $group: {
@@ -1333,7 +1347,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
             }
           ],
 
-          // ✅ CLOSED WON
+          // ================= CLOSED WON =================
           closedWon: [
             {
               $match: { "products.stage": "Closed Won" }
@@ -1353,8 +1367,6 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                 }
               }
             },
-
-            // 🔥 JOIN hospital
             {
               $lookup: {
                 from: "hospitals",
@@ -1364,30 +1376,44 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
               }
             },
             { $unwind: "$hospital" },
-
-            // 🔥 JOIN IDN
             {
-              $lookup: {
-                from: "idns",
-                localField: "hospital.idn",
-                foreignField: "_id",
-                as: "idn"
+              $project: {
+                _id: "$hospital._id",
+                hospitalName: "$hospital.hospitalName",
+                products: 1
+              }
+            }
+          ],
+
+          // ================= IMPLEMENTED =================
+          implemented: [
+            {
+              $match: { "products.stage": "Implemented" }
+            },
+            {
+              $group: {
+                _id: "$hospital",
+                products: {
+                  $push: {
+                    _id: "$products._id",
+                    product: "$products.product",
+                    dealAmount: "$products.dealAmount",
+                    stage: "$products.stage",
+                    expectedCloseDate: "$products.expectedCloseDate",
+                    dealDate: "$products.dealDate"
+                  }
+                }
               }
             },
-            { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
-
-            // 🔥 JOIN GPO
             {
               $lookup: {
-                from: "gpos",
-                localField: "hospital.gpo",
+                from: "hospitals",
+                localField: "_id",
                 foreignField: "_id",
-                as: "gpo"
+                as: "hospital"
               }
             },
-            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
-
-            // 🔥 PROJECT
+            { $unwind: "$hospital" },
             {
               $project: {
                 _id: "$hospital._id",
@@ -1406,18 +1432,23 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
     res.status(200).json({
       success: true,
       data: {
-        totalHospitals,            // user-specific hospitals
-        totalHospitalsInDB,        // global hospitals
-        totalProductsInDB,         // global products
+        totalHospitals,
+        totalHospitalsInDB,
+        totalProductsInDB,
 
         totalPipelineAmount: data.totals[0]?.totalPipelineAmount || 0,
 
         closedWon: {
           amount: data.totals[0]?.closedWonAmount || 0,
-          hospitals: data.closedWon
+          hospitals: data.closedWon || []
         },
 
-        pipeline: data.pipeline
+        implemented: {
+          amount: data.totals[0]?.implementedAmount || 0,
+          hospitals: data.implemented || []
+        },
+
+        pipeline: data.pipeline || []
       }
     });
 
