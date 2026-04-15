@@ -921,3 +921,61 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
     });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+export const removeProductFromDeal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { hospitalId, productId } = req.query;
+
+    if (!hospitalId || !productId) {
+      res.status(400).json({
+        success: false,
+        message: "hospitalId and productId are required"
+      });
+      return;
+    }
+
+    const updatedDeal = await Deal.findOneAndUpdate(
+      {
+        hospital: hospitalId,
+        "products.product": productId
+      },
+      {
+        $pull: {
+          products: { product: productId }
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal or product not found"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Product removed successfully",
+      data: updatedDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove product",
+      error: error.message
+    });
+  }
+};
