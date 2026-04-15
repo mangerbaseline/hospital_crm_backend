@@ -5,453 +5,6 @@ import mongoose from 'mongoose';
 import Product from '../model/Product.ts';
 import Hospital from '../model/Hospital.ts';
 
-/*
-export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
-
-    const searchQuery = (req.query.search as string) || "";
-    const userId = req.query.userId as string;
-
-    const matchStage: any = {};
-
-    // ✅ Filter by user
-    if (userId) {
-      matchStage.user = new mongoose.Types.ObjectId(userId);
-    }
-
-    const pipeline: any[] = [
-      { $match: matchStage },
-
-      // ✅ Unwind products (like flattening)
-      {
-        $unwind: {
-          path: "$products",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Filter by stage
-      ...(searchQuery
-        ? [
-          {
-            $match: {
-              "products.stage": {
-                $regex: searchQuery,
-                $options: "i"
-              }
-            }
-          }
-        ]
-        : []),
-
-      // ✅ Lookup hospital
-      {
-        $lookup: {
-          from: "hospitals",
-          localField: "hospital",
-          foreignField: "_id",
-          as: "hospital"
-        }
-      },
-      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
-
-      // ✅ Lookup IDN
-      {
-        $lookup: {
-          from: "idns",
-          localField: "hospital.idn",
-          foreignField: "_id",
-          as: "hospital.idn"
-        }
-      },
-      {
-        $unwind: {
-          path: "$hospital.idn",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Lookup GPO
-      {
-        $lookup: {
-          from: "gpos",
-          localField: "hospital.gpo",
-          foreignField: "_id",
-          as: "hospital.gpo"
-        }
-      },
-      {
-        $unwind: {
-          path: "$hospital.gpo",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Lookup product
-      {
-        $lookup: {
-          from: "products",
-          localField: "products.product",
-          foreignField: "_id",
-          as: "products.product"
-        }
-      },
-      {
-        $unwind: {
-          path: "$products.product",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      // ✅ Lookup user
-      {
-        $lookup: {
-          from: "users",
-          localField: "user",
-          foreignField: "_id",
-          as: "user"
-        }
-      },
-      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
-
-      // ✅ Final shape (like your flattened object)
-      {
-        $project: {
-          dealId: "$_id",
-
-          hospital: {
-            hospitalName: "$hospital.hospitalName",
-            city: "$hospital.city",
-            state: "$hospital.state",
-            zip: "$hospital.zip",
-            idn: {
-              _id: "$hospital.idn._id",
-              name: "$hospital.idn.name"
-            },
-            gpo: {
-              _id: "$hospital.gpo._id",
-              name: "$hospital.gpo.name"
-            }
-          },
-
-          product: "$products.product",
-          dealAmount: "$products.dealAmount",
-          stage: "$products.stage",
-          expectedCloseDate: "$products.expectedCloseDate",
-          dealDate: "$products.dealDate",
-
-          user: {
-            _id: "$user._id",
-            name: "$user.name",
-            email: "$user.email"
-          },
-
-          notes: 1,
-          createdAt: 1,
-          updatedAt: 1
-        }
-      },
-
-      // ✅ Sort
-      { $sort: { createdAt: -1 } },
-
-      // ✅ Pagination
-      { $skip: skip },
-      { $limit: limit }
-    ];
-
-    const data = await Deal.aggregate(pipeline);
-
-    // ✅ Total count (separate pipeline)
-    const countPipeline = [
-      { $match: matchStage },
-      {
-        $unwind: {
-          path: "$products",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      ...(searchQuery
-        ? [
-          {
-            $match: {
-              "products.stage": {
-                $regex: searchQuery,
-                $options: "i"
-              }
-            }
-          }
-        ]
-        : []),
-      { $count: "total" }
-    ];
-
-    const countResult = await Deal.aggregate(countPipeline);
-    const totalDeals = countResult[0]?.total || 0;
-
-    res.status(200).json({
-      success: true,
-      page,
-      limit,
-      totalDeals,
-      totalPages: Math.ceil(totalDeals / limit),
-      data
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve deals",
-      error: error.message
-    });
-  }
-};
-*/
-
-/*
-export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const searchQuery = (req.query.search as string) || "";
-    const userId = req.query.userId as string;
-
-    const matchStage: any = {};
-
-    // ✅ Filter by userId
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      matchStage.user = new mongoose.Types.ObjectId(userId);
-    }
-
-    const pipeline: any[] = [
-      { $match: matchStage },
-
-      {
-        $facet: {
-          // =========================
-          // ✅ 1. DEALS DATA
-          // =========================
-          deals: [
-            {
-              $unwind: {
-                path: "$products",
-                preserveNullAndEmptyArrays: true
-              }
-            },
-
-            ...(searchQuery
-              ? [
-                {
-                  $match: {
-                    "products.stage": {
-                      $regex: searchQuery,
-                      $options: "i"
-                    }
-                  }
-                }
-              ]
-              : []),
-
-            // ✅ Hospital
-            {
-              $lookup: {
-                from: "hospitals",
-                localField: "hospital",
-                foreignField: "_id",
-                as: "hospital"
-              }
-            },
-            { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
-
-            // ✅ IDN
-            {
-              $lookup: {
-                from: "idns",
-                localField: "hospital.idn",
-                foreignField: "_id",
-                as: "idn"
-              }
-            },
-            { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
-
-            // ✅ GPO
-            {
-              $lookup: {
-                from: "gpos",
-                localField: "hospital.gpo",
-                foreignField: "_id",
-                as: "gpo"
-              }
-            },
-            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
-
-            // ✅ Product
-            {
-              $lookup: {
-                from: "products",
-                localField: "products.product",
-                foreignField: "_id",
-                as: "products.product"
-              }
-            },
-            {
-              $unwind: {
-                path: "$products.product",
-                preserveNullAndEmptyArrays: true
-              }
-            },
-
-            // ✅ User
-            {
-              $lookup: {
-                from: "users",
-                localField: "user",
-                foreignField: "_id",
-                as: "user"
-              }
-            },
-            { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
-
-            // ✅ Final shape
-            {
-              $project: {
-                dealId: "$_id",
-
-                hospital: {
-                  _id: "$hospital._id",
-                  hospitalName: "$hospital.hospitalName",
-                  city: "$hospital.city",
-                  state: "$hospital.state",
-                  zip: "$hospital.zip",
-
-                  idn: {
-                    _id: "$idn._id",
-                    name: "$idn.name"
-                  },
-
-                  gpo: {
-                    _id: "$gpo._id",
-                    name: "$gpo.name"
-                  }
-                },
-
-                product: "$products.product",
-                dealAmount: "$products.dealAmount",
-                stage: "$products.stage",
-
-                user: {
-                  _id: "$user._id",
-                  name: "$user.name"
-                },
-
-                createdAt: 1
-              }
-            },
-
-            { $sort: { createdAt: -1 } }
-          ],
-
-          // =========================
-          // ✅ 2. TOTAL HOSPITALS
-          // =========================
-          totalHospitals: [
-            {
-              $group: {
-                _id: "$hospital"
-              }
-            },
-            {
-              $count: "count"
-            }
-          ],
-
-          // =========================
-          // ✅ 3. PRODUCT ARR
-          // =========================
-          productRevenue: [
-            {
-              $unwind: "$products"
-            },
-            {
-              $group: {
-                _id: "$products.product",
-                ARR: {
-                  $sum: {
-                    $ifNull: ["$products.dealAmount", 0]
-                  }
-                }
-              }
-            },
-
-            {
-              $lookup: {
-                from: "products",
-                localField: "_id",
-                foreignField: "_id",
-                as: "product"
-              }
-            },
-            { $unwind: "$product" },
-
-            {
-              $project: {
-                _id: 0,
-                productId: "$product._id",
-                productName: "$product.name",
-                ARR: 1
-              }
-            },
-
-            { $sort: { ARR: -1 } }
-          ],
-
-          // =========================
-          // ✅ 4. CLOSED BUSINESS COUNT
-          // =========================
-          closedBusiness: [
-            {
-              $unwind: "$products"
-            },
-            {
-              $match: {
-                "products.stage": "Closed Won"
-              }
-            },
-            {
-              $count: "count"
-            }
-          ]
-        }
-      }
-    ];
-
-    const result = await Deal.aggregate(pipeline);
-
-    const deals = result[0]?.deals || [];
-    const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
-    const productRevenue = result[0]?.productRevenue || [];
-    const closedBusiness = result[0]?.closedBusiness[0]?.count || 0;
-
-    res.status(200).json({
-      success: true,
-      totalDeals: deals.length,
-      totalHospitals,
-      closedBusiness,
-      productRevenue,
-      data: deals
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve deals",
-      error: error.message
-    });
-  }
-};
-*/
-
 
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -697,7 +250,6 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 };
 
 
-
 export const getDealById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -718,6 +270,8 @@ export const getDealById = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+
+/*
 export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const dealData = {
@@ -740,7 +294,46 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
     });
   }
 };
+*/
 
+
+export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { products, ...rest } = req.body;
+
+    if (!products || !products.length) {
+      res.status(400).json({
+        success: false,
+        message: "At least one product is required"
+      });
+      return;
+    }
+
+    const dealsToInsert = products.map((product: any) => ({
+      ...rest,
+      user: req.user?._id,
+      products: [product] // only ONE product per document
+    }));
+
+    const createdDeals = await Deal.insertMany(dealsToInsert);
+
+    res.status(201).json({
+      success: true,
+      count: createdDeals.length,
+      data: createdDeals
+    });
+
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: 'Failed to create deals',
+      error: error.message
+    });
+  }
+};
+
+
+/*
 export const updateDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -768,6 +361,7 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
     });
   }
 };
+*/
 
 export const deleteDeal = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -855,8 +449,6 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
 };
 */
 
-
-
 export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
   try {
     const { dealId, productId, stage } = req.body;
@@ -924,7 +516,7 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
 
 
 
-
+/*
 export const removeProductFromDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const hospitalId = req.query.hospitalId as string;
@@ -973,7 +565,47 @@ export const removeProductFromDeal = async (req: Request, res: Response): Promis
     });
   }
 };
+*/
 
+
+export const removeDeal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const dealId = req.params.dealId || req.query.dealId as string;
+
+    if (!dealId) {
+      res.status(400).json({
+        success: false,
+        message: "dealId is required"
+      });
+      return;
+    }
+
+    const deletedDeal = await Deal.findByIdAndDelete(dealId);
+
+    if (!deletedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal not found"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Deal deleted successfully",
+      data: deletedDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete deal",
+      error: error.message
+    });
+  }
+};
+
+/*
 export const addProductToDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const hospitalId = req.query.hospitalId as string;
@@ -1034,7 +666,64 @@ export const addProductToDeal = async (req: Request, res: Response): Promise<voi
     });
   }
 };
+*/
 
+export const addProductToDeal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hospitalId = req.query.hospitalId as string;
+
+    const {
+      product,
+      dealAmount,
+      stage,
+      expectedCloseDate,
+      dealDate,
+      idn,
+      gpo
+    } = req.body;
+
+    if (!hospitalId || !product || !idn || !gpo) {
+      res.status(400).json({
+        success: false,
+        message: "hospitalId, product, idn and gpo are required"
+      });
+      return;
+    }
+
+    const newDeal = new Deal({
+      hospital: hospitalId,
+      idn,
+      gpo,
+      user: (req as any).user?._id, // if using auth
+      products: [
+        {
+          product,
+          dealAmount,
+          stage,
+          expectedCloseDate,
+          dealDate
+        }
+      ]
+    });
+
+    await newDeal.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Deal created successfully",
+      data: newDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to create deal",
+      error: error.message
+    });
+  }
+};
+
+/*
 export const updateProductInDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const hospitalId = req.query.hospitalId as string;
@@ -1095,176 +784,65 @@ export const updateProductInDeal = async (req: Request, res: Response): Promise<
     });
   }
 };
+*/
 
-
-
-/*
-export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateDeal = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?._id;
+    const dealId = req.params.dealId || (req.query.dealId as string);
 
-    if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
+    const {
+      dealAmount,
+      stage,
+      expectedCloseDate,
+      dealDate,
+      product
+    } = req.body;
+
+    if (!dealId) {
+      res.status(400).json({
+        success: false,
+        message: "dealId is required"
+      });
       return;
     }
 
-    const objectUserId = new mongoose.Types.ObjectId(userId);
+    const updateFields: any = {};
 
-    // 🔥 1. Total hospitals (simple query - fast)
-    const totalHospitals = await Hospital.countDocuments({ user: objectUserId });
+    if (product) updateFields["products.0.product"] = product;
+    if (dealAmount !== undefined) updateFields["products.0.dealAmount"] = dealAmount;
+    if (stage) updateFields["products.0.stage"] = stage;
+    if (expectedCloseDate) updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
+    if (dealDate) updateFields["products.0.dealDate"] = dealDate;
 
-    // 🔥 2. SINGLE aggregation for everything
-    const result = await Deal.aggregate([
-      { $match: { user: objectUserId } },
+    const updatedDeal = await Deal.findByIdAndUpdate(
+      dealId,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
 
-      { $unwind: "$products" },
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal not found"
+      });
+      return;
+    }
 
-      {
-        $facet: {
-          // ✅ TOTALS
-          totals: [
-            {
-              $group: {
-                _id: null,
-                totalPipelineAmount: { $sum: "$products.dealAmount" },
-                closedWonAmount: {
-                  $sum: {
-                    $cond: [
-                      { $eq: ["$products.stage", "Closed Won"] },
-                      "$products.dealAmount",
-                      0
-                    ]
-                  }
-                }
-              }
-            }
-          ],
-
-          // ✅ PIPELINE
-          pipeline: [
-            {
-              $group: {
-                _id: "$products.stage",
-                amount: { $sum: "$products.dealAmount" },
-                hospitals: { $addToSet: "$hospital" }
-              }
-            },
-            {
-              $project: {
-                _id: 0,
-                stage: "$_id",
-                amount: 1,
-                hospitalCount: { $size: "$hospitals" }
-              }
-            }
-          ],
-
-          // ✅ CLOSED WON WITH PRODUCTS
-          closedWon: [
-            {
-              $match: { "products.stage": "Closed Won" }
-            },
-            {
-              $group: {
-                _id: "$hospital",
-                products: {
-                  $push: {
-                    _id: "$products._id",
-                    product: "$products.product",
-                    dealAmount: "$products.dealAmount",
-                    stage: "$products.stage",
-                    expectedCloseDate: "$products.expectedCloseDate",
-                    dealDate: "$products.dealDate"
-                  }
-                }
-              }
-            },
-
-            // 🔥 JOIN hospital
-            {
-              $lookup: {
-                from: "hospitals",
-                localField: "_id",
-                foreignField: "_id",
-                as: "hospital"
-              }
-            },
-            { $unwind: "$hospital" },
-
-            // 🔥 JOIN IDN
-            {
-              $lookup: {
-                from: "idns",
-                localField: "hospital.idn",
-                foreignField: "_id",
-                as: "idn"
-              }
-            },
-            { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
-
-            // 🔥 JOIN GPO
-            {
-              $lookup: {
-                from: "gpos",
-                localField: "hospital.gpo",
-                foreignField: "_id",
-                as: "gpo"
-              }
-            },
-            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
-
-            // 🔥 JOIN products
-            {
-              $lookup: {
-                from: "products",
-                localField: "products.product",
-                foreignField: "_id",
-                as: "productDetails"
-              }
-            },
-
-            // 🔥 reshape
-            {
-              $project: {
-                _id: "$hospital._id",
-                hospitalName: "$hospital.hospitalName",
-                // city: "$hospital.city",
-                // state: "$hospital.state",
-                // idn: { _id: "$idn._id", name: "$idn.name" },
-                // gpo: { _id: "$gpo._id", name: "$gpo.name" },
-                products: 1
-              }
-            }
-          ]
-        }
-      }
-    ]);
-
-    const data = result[0];
-
-    // 🔥 Final response
     res.status(200).json({
       success: true,
-      data: {
-        totalHospitals,
-        totalPipelineAmount: data.totals[0]?.totalPipelineAmount || 0,
-        closedWon: {
-          amount: data.totals[0]?.closedWonAmount || 0,
-          hospitals: data.closedWon
-        },
-        pipeline: data.pipeline
-      }
+      message: "Deal updated successfully",
+      data: updatedDeal
     });
 
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: "Failed to fetch dashboard stats",
+      message: "Failed to update deal",
       error: error.message
     });
   }
 };
-*/
+
 
 export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
