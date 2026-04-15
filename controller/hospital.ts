@@ -1122,286 +1122,260 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
     const userId = req.query.userId as string;
     const productStage = req.query.productStage as string;
 
-    const filterUserId = userId
-      ? new mongoose.Types.ObjectId(userId)
-      : null;
+    const filterUserId =
+      userId && mongoose.Types.ObjectId.isValid(userId)
+        ? new mongoose.Types.ObjectId(userId)
+        : null;
 
-    const pipeline: any[] = [
+    const pipeline: any[] = [];
 
-      // ================= USER FILTER =================
-      ...(filterUserId ? [{ $match: { user: filterUserId } }] : []),
+    // ================= USER FILTER =================
+    if (filterUserId) {
+      pipeline.push({ $match: { user: filterUserId } });
+    }
 
-      // ================= DEALS LOOKUP =================
-      {
-        $lookup: {
-          from: "deals",
-          let: { hospitalId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$hospital", "$$hospitalId"] }
-              }
-            },
-
-            // ✅ PRODUCT STAGE FILTER (INSIDE DEALS ONLY)
-            ...(productStage
-              ? [
-                {
-                  $match: {
-                    "products.stage": productStage
-                  }
-                }
-              ]
-              : []),
-
-            {
-              $project: {
-                products: 1
-              }
-            }
-          ],
-          as: "deals"
-        }
-      },
-
-      // ================= SAFE FLATTEN PRODUCT IDS =================
-      {
-        $addFields: {
-          allProductIds: {
-            $reduce: {
-              input: { $ifNull: ["$deals", []] },
-              initialValue: [],
-              in: {
-                $concatArrays: [
-                  "$$value",
-                  {
-                    $map: {
-                      input: { $ifNull: ["$$this.products", []] },
-                      as: "p",
-                      in: "$$p.product"
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      },
-
-      // ================= IDN =================
-      {
-        $lookup: {
-          from: "idns",
-          let: { idnId: "$idn" },
-          pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$idnId"] } } },
-            { $project: { name: 1, user: 1 } }
-          ],
-          as: "idn"
-        }
-      },
-      { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
-
-      // ================= GPO =================
-      {
-        $lookup: {
-          from: "gpos",
-          let: { gpoId: "$gpo" },
-          pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$gpoId"] } } },
-            { $project: { name: 1, user: 1 } }
-          ],
-          as: "gpo"
-        }
-      },
-      { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
-
-      // ================= PRODUCTS =================
-      {
-        $lookup: {
-          from: "products",
-          localField: "allProductIds",
-          foreignField: "_id",
-          as: "productsData"
-        }
-      },
-
-      // ================= MAP PRODUCT NAMES =================
-      {
-        $addFields: {
-          deals: {
-            $map: {
-              input: { $ifNull: ["$deals", []] },
-              as: "deal",
-              in: {
-                $mergeObjects: [
-                  "$$deal",
-                  {
-                    products: {
-                      $map: {
-                        input: { $ifNull: ["$$deal.products", []] },
-                        as: "prod",
-                        in: {
-                          $mergeObjects: [
-                            "$$prod",
-                            {
-                              product: {
-                                $arrayElemAt: [
-                                  {
-                                    $map: {
-                                      input: {
-                                        $filter: {
-                                          input: "$productsData",
-                                          as: "p",
-                                          cond: {
-                                            $eq: ["$$p._id", "$$prod.product"]
-                                          }
-                                        }
-                                      },
-                                      as: "m",
-                                      in: "$$m.name"
-                                    }
-                                  },
-                                  0
-                                ]
-                              }
-                            }
-                          ]
-                        }
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      },
-
-      // ================= ADD LATEST DEAL DATE =================
-      {
-        $addFields: {
-          deals: {
-            $map: {
-              input: { $ifNull: ["$deals", []] },
-              as: "d",
-              in: {
-                $mergeObjects: [
-                  "$$d",
-                  {
-                    dealMaxDate: {
-                      $max: {
-                        $map: {
-                          input: { $ifNull: ["$$d.products", []] },
-                          as: "p",
-                          in: "$$p.dealDate"
-                        }
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      },
-
-      // ================= SORT + TAKE ONLY 2 LATEST DEALS =================
-      {
-        $addFields: {
-          deals: {
-            $slice: [
-              {
-                $sortArray: {
-                  input: "$deals",
-                  sortBy: { dealMaxDate: -1 }
-                }
-              },
-              2
-            ]
-          }
-        }
-      },
-
-      // ================= DATE CALC =================
-      {
-        $addFields: {
-          allDates: {
-            $reduce: {
-              input: { $ifNull: ["$deals", []] },
-              initialValue: [],
-              in: {
-                $concatArrays: [
-                  "$$value",
-                  {
-                    $map: {
-                      input: "$$this.products",
-                      as: "p",
-                      in: "$$p.expectedCloseDate"
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      },
-
-      {
-        $addFields: {
-          minExpectedCloseDate: {
-            $min: "$allDates"
-          }
-        }
-      },
-
-      // ================= SEARCH =================
-      ...(search
-        ? [
+    // ================= LOOKUP DEALS =================
+    pipeline.push({
+      $lookup: {
+        from: "deals",
+        let: { hospitalId: "$_id" },
+        pipeline: [
           {
             $match: {
-              $or: [
-                { hospitalName: { $regex: search, $options: "i" } },
-                { city: { $regex: search, $options: "i" } },
-                { "idn.name": { $regex: search, $options: "i" } }
+              $expr: { $eq: ["$hospital", "$$hospitalId"] }
+            }
+          },
+
+          // ✅ FILTER BY STAGE (INSIDE DEALS)
+          ...(productStage
+            ? [
+              {
+                $match: {
+                  "products.stage": productStage
+                }
+              }
+            ]
+            : []),
+
+          {
+            $project: {
+              products: 1
+            }
+          }
+        ],
+        as: "deals"
+      }
+    });
+
+    // 🔥 IMPORTANT FIX: REMOVE HOSPITALS WITH EMPTY DEALS WHEN FILTER IS APPLIED
+    if (productStage) {
+      pipeline.push({
+        $match: {
+          deals: { $ne: [], $exists: true }
+        }
+      });
+    }
+
+    // ================= FLATTEN PRODUCT IDS =================
+    pipeline.push({
+      $addFields: {
+        allProductIds: {
+          $reduce: {
+            input: { $ifNull: ["$deals", []] },
+            initialValue: [],
+            in: {
+              $concatArrays: [
+                "$$value",
+                {
+                  $map: {
+                    input: { $ifNull: ["$$this.products", []] },
+                    as: "p",
+                    in: "$$p.product"
+                  }
+                }
               ]
             }
           }
-        ]
-        : []),
-
-      // ================= SORT HOSPITALS =================
-      {
-        $sort: { minExpectedCloseDate: 1 }
-      },
-
-      // ================= FINAL PROJECT =================
-      {
-        $project: {
-          hospitalName: 1,
-          city: 1,
-          state: 1,
-          zip: 1,
-          idn: 1,
-          gpo: 1,
-          deals: 1,
-          minExpectedCloseDate: 1
         }
-      },
+      }
+    });
 
-      // ================= PAGINATION =================
-      {
-        $facet: {
-          data: [
-            { $skip: skip },
-            { $limit: limit }
-          ],
-          totalCount: [
-            { $count: "count" }
+    // ================= IDN =================
+    pipeline.push({
+      $lookup: {
+        from: "idns",
+        let: { idnId: "$idn" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$_id", "$$idnId"] } } },
+          { $project: { name: 1, user: 1 } }
+        ],
+        as: "idn"
+      }
+    });
+
+    pipeline.push({
+      $unwind: { path: "$idn", preserveNullAndEmptyArrays: true }
+    });
+
+    // ================= GPO =================
+    pipeline.push({
+      $lookup: {
+        from: "gpos",
+        let: { gpoId: "$gpo" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$_id", "$$gpoId"] } } },
+          { $project: { name: 1, user: 1 } }
+        ],
+        as: "gpo"
+      }
+    });
+
+    pipeline.push({
+      $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true }
+    });
+
+    // ================= PRODUCTS =================
+    pipeline.push({
+      $lookup: {
+        from: "products",
+        localField: "allProductIds",
+        foreignField: "_id",
+        as: "productsData"
+      }
+    });
+
+    // ================= MAP PRODUCT NAMES =================
+    pipeline.push({
+      $addFields: {
+        deals: {
+          $map: {
+            input: { $ifNull: ["$deals", []] },
+            as: "deal",
+            in: {
+              $mergeObjects: [
+                "$$deal",
+                {
+                  products: {
+                    $map: {
+                      input: { $ifNull: ["$$deal.products", []] },
+                      as: "prod",
+                      in: {
+                        $mergeObjects: [
+                          "$$prod",
+                          {
+                            product: {
+                              $arrayElemAt: [
+                                {
+                                  $map: {
+                                    input: {
+                                      $filter: {
+                                        input: "$productsData",
+                                        as: "p",
+                                        cond: {
+                                          $eq: ["$$p._id", "$$prod.product"]
+                                        }
+                                      }
+                                    },
+                                    as: "m",
+                                    in: "$$m.name"
+                                  }
+                                },
+                                0
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    // ================= LATEST DATE CALC =================
+    pipeline.push({
+      $addFields: {
+        allDates: {
+          $reduce: {
+            input: { $ifNull: ["$deals", []] },
+            initialValue: [],
+            in: {
+              $concatArrays: [
+                "$$value",
+                {
+                  $map: {
+                    input: "$$this.products",
+                    as: "p",
+                    in: "$$p.expectedCloseDate"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    pipeline.push({
+      $addFields: {
+        minExpectedCloseDate: {
+          $cond: [
+            { $gt: [{ $size: "$allDates" }, 0] },
+            { $min: "$allDates" },
+            null
           ]
         }
       }
-    ];
+    });
+
+    // ================= SEARCH =================
+    if (search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { hospitalName: { $regex: search, $options: "i" } },
+            { city: { $regex: search, $options: "i" } },
+            { "idn.name": { $regex: search, $options: "i" } }
+          ]
+        }
+      });
+    }
+
+    // ================= SORT =================
+    pipeline.push({
+      $sort: { minExpectedCloseDate: 1 }
+    });
+
+    // ================= PROJECT =================
+    pipeline.push({
+      $project: {
+        hospitalName: 1,
+        city: 1,
+        state: 1,
+        zip: 1,
+        idn: 1,
+        gpo: 1,
+        deals: 1,
+        minExpectedCloseDate: 1
+      }
+    });
+
+    // ================= PAGINATION =================
+    pipeline.push({
+      $facet: {
+        data: [
+          { $skip: skip },
+          { $limit: limit }
+        ],
+        totalCount: [
+          { $count: "count" }
+        ]
+      }
+    });
 
     const result = await Hospital.aggregate(pipeline);
 
