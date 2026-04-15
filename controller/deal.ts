@@ -934,12 +934,13 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
 
 export const removeProductFromDeal = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { hospitalId, productId } = req.query;
+    const hospitalId = req.query.hospitalId as string;
+    const productItemId = req.query.productItemId as string; // 👈 use embedded _id
 
-    if (!hospitalId || !productId) {
+    if (!hospitalId || !productItemId) {
       res.status(400).json({
         success: false,
-        message: "hospitalId and productId are required"
+        message: "hospitalId and productItemId are required"
       });
       return;
     }
@@ -947,11 +948,11 @@ export const removeProductFromDeal = async (req: Request, res: Response): Promis
     const updatedDeal = await Deal.findOneAndUpdate(
       {
         hospital: hospitalId,
-        "products.product": productId
+        "products._id": productItemId // ✅ match exact item
       },
       {
         $pull: {
-          products: { product: productId }
+          products: { _id: productItemId } // ✅ remove by _id
         }
       },
       { new: true }
@@ -960,7 +961,7 @@ export const removeProductFromDeal = async (req: Request, res: Response): Promis
     if (!updatedDeal) {
       res.status(404).json({
         success: false,
-        message: "Deal or product not found"
+        message: "Deal or product item not found"
       });
       return;
     }
@@ -975,6 +976,129 @@ export const removeProductFromDeal = async (req: Request, res: Response): Promis
     res.status(500).json({
       success: false,
       message: "Failed to remove product",
+      error: error.message
+    });
+  }
+};
+
+export const addProductToDeal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hospitalId = req.query.hospitalId as string;
+
+    const {
+      product,
+      dealAmount,
+      stage,
+      expectedCloseDate,
+      dealDate
+    } = req.body;
+
+    if (!hospitalId || !product) {
+      res.status(400).json({
+        success: false,
+        message: "hospitalId and product are required"
+      });
+      return;
+    }
+
+    const newProduct = {
+      product,
+      dealAmount,
+      stage,
+      expectedCloseDate,
+      dealDate
+    };
+
+    const updatedDeal = await Deal.findOneAndUpdate(
+      { hospital: hospitalId },
+      {
+        $push: {
+          products: newProduct
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal not found for this hospital"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Product added successfully",
+      data: updatedDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to add product",
+      error: error.message
+    });
+  }
+};
+
+
+export const updateProductInDeal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hospitalId = req.query.hospitalId as string;
+    const productItemId = req.query.productItemId as string; // 👈 THIS is products._id
+
+    const {
+      dealAmount,
+      stage,
+      expectedCloseDate,
+      dealDate
+    } = req.body;
+
+    if (!hospitalId || !productItemId) {
+      res.status(400).json({
+        success: false,
+        message: "hospitalId and productItemId are required"
+      });
+      return;
+    }
+
+    const updateFields: any = {};
+
+    if (dealAmount !== undefined) updateFields["products.$.dealAmount"] = dealAmount;
+    if (stage) updateFields["products.$.stage"] = stage;
+    if (expectedCloseDate) updateFields["products.$.expectedCloseDate"] = expectedCloseDate;
+    if (dealDate) updateFields["products.$.dealDate"] = dealDate;
+
+    const updatedDeal = await Deal.findOneAndUpdate(
+      {
+        hospital: hospitalId,
+        "products._id": productItemId // ✅ match by embedded _id
+      },
+      {
+        $set: updateFields
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal or product item not found"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Product updated successfully",
+      data: updatedDeal
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update product",
       error: error.message
     });
   }
