@@ -1042,7 +1042,6 @@ export const addProductToDeal = async (req: Request, res: Response): Promise<voi
   }
 };
 
-
 export const updateProductInDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const hospitalId = req.query.hospitalId as string;

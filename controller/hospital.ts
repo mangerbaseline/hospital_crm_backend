@@ -242,6 +242,7 @@ export const deleteHospital = async (req: Request, res: Response): Promise<void>
 };
 
 
+/*
 export const updateHospital = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -273,6 +274,46 @@ export const updateHospital = async (req: Request, res: Response): Promise<void>
     });
   }
 };
+*/
+
+export const updateHospital = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (typeof id !== 'string') {
+      res.status(400).json({ success: false, message: 'Invalid ID' });
+      return;
+    }
+
+    const updatedHospital = await Hospital.findByIdAndUpdate(
+      id,
+      req.body,
+      { new: true, runValidators: true }
+    )
+      .populate("idn", "name")
+      .populate("gpo", "name")
+      .populate("contacts", "firstName lastName designation phoneNumber email");
+
+    if (!updatedHospital) {
+      res.status(404).json({ success: false, message: 'Hospital not found' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedHospital
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update hospital',
+      error: error.message
+    });
+  }
+};
+
+
 
 
 
