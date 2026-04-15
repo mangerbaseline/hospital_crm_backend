@@ -792,11 +792,14 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
     ] = await Promise.all([
       Task.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
       Notes.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
-      CallLog.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5)
+      CallLog.find({ user: objectUserId })
+        .populate("contact", "firstName lastName") // 🔥 POPULATED CONTACT
+        .sort({ createdAt: -1 })
+        .limit(5)
     ]);
 
     // =========================
-    // 🔥 STAGES
+    // 🔥 STAGES MASTER
     // =========================
     const stages = [
       "Demo",
@@ -847,7 +850,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                   }
                 },
 
-                // ✅ CLOSED WON COUNT
+                // ================= COUNTS =================
                 closedWonProductsCount: {
                   $sum: {
                     $cond: [
@@ -858,11 +861,26 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                   }
                 },
 
-                // ✅ IMPLEMENTED COUNT
                 implementedProductsCount: {
                   $sum: {
                     $cond: [
                       { $eq: ["$products.stage", "Implemented"] },
+                      1,
+                      0
+                    ]
+                  }
+                },
+
+                // ================= ACTIVE DEALS =================
+                activeDealsCount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$products.stage", "Closed Won"] },
+                          { $ne: ["$products.stage", "Implemented"] }
+                        ]
+                      },
                       1,
                       0
                     ]
@@ -976,17 +994,9 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 
     const data = result[0];
 
-
-    // const pipelineMap = new Map(
-    //   (data?.pipelineRaw || []).map((p: any) => [p.stage, p])
-    // );
-
-    // const pipeline = stages.map(stage => ({
-    //   stage,
-    //   amount: pipelineMap.get(stage)?.amount || 0,
-    //   hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0
-    // }));
-
+    // =========================
+    // 🔥 PIPELINE MAP
+    // =========================
     const pipelineMap = new Map<string, any>(
       (data?.pipelineRaw || []).map((p: any) => [p.stage, p])
     );
@@ -997,10 +1007,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
       hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0
     }));
 
-
-
     // =========================
-    // 🔥 RESPONSE
+    // 🔥 FINAL RESPONSE
     // =========================
     res.status(200).json({
       success: true,
@@ -1009,16 +1017,17 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
         totalHospitalsInDB,
         totalProductsInDB,
 
+        // 🔥 NEW
+        activeDeals: data?.totals?.[0]?.activeDealsCount || 0,
+
         totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
 
-        // ================= CLOSED WON =================
         closedWon: {
           amount: data?.totals?.[0]?.closedWonAmount || 0,
           productsCount: data?.totals?.[0]?.closedWonProductsCount || 0,
           hospitals: data?.closedWon || []
         },
 
-        // ================= IMPLEMENTED =================
         implemented: {
           amount: data?.totals?.[0]?.implementedAmount || 0,
           productsCount: data?.totals?.[0]?.implementedProductsCount || 0,
@@ -1027,15 +1036,18 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 
         pipeline,
 
-        // ================= ACTIVITY =================
         tasks: tasks || [],
 
+        // =========================
+        // 🔥 RECENT ACTIVITY (MERGED)
+        // =========================
         recentActivity: [
           ...((notes || []).map(n => ({
             type: "note",
             data: n,
             createdAt: n.createdAt
           }))),
+
           ...((callLogs || []).map(c => ({
             type: "callLog",
             data: c,
