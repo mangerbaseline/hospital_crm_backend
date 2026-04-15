@@ -250,6 +250,7 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 };
 
 
+/*
 export const getDealById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -269,7 +270,7 @@ export const getDealById = async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({ success: false, message: 'Error fetching deal', error: error.message });
   }
 };
-
+*/
 
 /*
 export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
