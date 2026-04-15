@@ -536,6 +536,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
 };
 */
 
+/*
 export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -812,6 +813,618 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
 
   } catch (error: any) {
     console.error("Error fetching hospitals with deals:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+*/
+
+/*
+export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+    const search = (req.query.search as string) || "";
+
+    const userId = req.query.userId as string;
+    const productStage = req.query.productStage as string;
+
+    const filterUserId = userId
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
+
+    const pipeline: any[] = [
+      // ================= USER FILTER =================
+      ...(filterUserId ? [{ $match: { user: filterUserId } }] : []),
+
+      // ================= DEALS LOOKUP =================
+      {
+        $lookup: {
+          from: "deals",
+          let: { hospitalId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$hospital", "$$hospitalId"] }
+              }
+            },
+
+            // 🔥 FILTER BY PRODUCT STAGE
+            ...(productStage
+              ? [
+                {
+                  $match: {
+                    "products.stage": productStage
+                  }
+                }
+              ]
+              : []),
+
+            {
+              $project: { products: 1 }
+            }
+          ],
+          as: "deals"
+        }
+      },
+
+      // ================= REMOVE EMPTY HOSPITALS =================
+      {
+        $match: {
+          deals: { $ne: [] }
+        }
+      },
+
+      // ================= FLATTEN PRODUCT IDS =================
+      {
+        $addFields: {
+          allProductIds: {
+            $reduce: {
+              input: "$deals",
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  "$$value",
+                  {
+                    $map: {
+                      input: { $ifNull: ["$$this.products", []] },
+                      as: "p",
+                      in: "$$p.product"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      // ================= IDN =================
+      {
+        $lookup: {
+          from: "idns",
+          let: { idnId: "$idn" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$idnId"] } } },
+            { $project: { name: 1, user: 1 } }
+          ],
+          as: "idn"
+        }
+      },
+      { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
+
+      // ================= GPO =================
+      {
+        $lookup: {
+          from: "gpos",
+          let: { gpoId: "$gpo" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$gpoId"] } } },
+            { $project: { name: 1, user: 1 } }
+          ],
+          as: "gpo"
+        }
+      },
+      { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
+
+      // ================= PRODUCTS =================
+      {
+        $lookup: {
+          from: "products",
+          localField: "allProductIds",
+          foreignField: "_id",
+          as: "productsData"
+        }
+      },
+
+      // ================= DEALS + PRODUCT MAP =================
+      {
+        $addFields: {
+          deals: {
+            $map: {
+              input: "$deals",
+              as: "deal",
+              in: {
+                $mergeObjects: [
+                  "$$deal",
+                  {
+                    products: {
+                      $slice: [
+                        {
+                          $sortArray: {
+                            input: {
+                              $map: {
+                                input: { $ifNull: ["$$deal.products", []] },
+                                as: "prod",
+                                in: {
+                                  $mergeObjects: [
+                                    "$$prod",
+                                    {
+                                      product: {
+                                        $arrayElemAt: [
+                                          {
+                                            $map: {
+                                              input: {
+                                                $filter: {
+                                                  input: "$productsData",
+                                                  as: "p",
+                                                  cond: {
+                                                    $eq: [
+                                                      { $toString: "$$p._id" },
+                                                      { $toString: "$$prod.product" }
+                                                    ]
+                                                  }
+                                                }
+                                              },
+                                              as: "matched",
+                                              in: "$$matched.name"
+                                            }
+                                          },
+                                          0
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            sortBy: { expectedCloseDate: -1 }
+                          }
+                        },
+                        2
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      // ================= DATE CALCULATION =================
+      {
+        $addFields: {
+          allDates: {
+            $reduce: {
+              input: "$deals",
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  "$$value",
+                  {
+                    $map: {
+                      input: { $ifNull: ["$$this.products", []] },
+                      as: "p",
+                      in: "$$p.expectedCloseDate"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          minExpectedCloseDate: {
+            $min: "$allDates"
+          }
+        }
+      },
+
+      // ================= SEARCH =================
+      ...(search
+        ? [
+          {
+            $match: {
+              $or: [
+                { hospitalName: { $regex: search, $options: "i" } },
+                { city: { $regex: search, $options: "i" } },
+                { "idn.name": { $regex: search, $options: "i" } },
+                { "deals.products.product": { $regex: search, $options: "i" } }
+              ]
+            }
+          }
+        ]
+        : []),
+
+      // ================= SORT =================
+      {
+        $sort: { minExpectedCloseDate: 1 }
+      },
+
+      // ================= PROJECT =================
+      {
+        $project: {
+          hospitalName: 1,
+          city: 1,
+          state: 1,
+          zip: 1,
+          idn: 1,
+          gpo: 1,
+          deals: 1,
+          minExpectedCloseDate: 1
+        }
+      },
+
+      // ================= PAGINATION =================
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          totalCount: [
+            { $count: "count" }
+          ]
+        }
+      }
+    ];
+
+    const result = await Hospital.aggregate(pipeline);
+
+    const hospitals = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.count || 0;
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalHospitals: total,
+      totalPages: Math.ceil(total / limit),
+      data: hospitals
+    });
+
+  } catch (error: any) {
+    console.error("Error fetching hospitals with deals:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+*/
+
+export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+    const search = (req.query.search as string) || "";
+
+    const userId = req.query.userId as string;
+    const productStage = req.query.productStage as string;
+
+    const filterUserId = userId
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
+
+    const pipeline: any[] = [
+      ...(filterUserId ? [{ $match: { user: filterUserId } }] : []),
+
+      // ================= DEALS LOOKUP =================
+      {
+        $lookup: {
+          from: "deals",
+          let: { hospitalId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$hospital", "$$hospitalId"] }
+              }
+            },
+
+            ...(productStage
+              ? [
+                {
+                  $match: {
+                    "products.stage": productStage
+                  }
+                }
+              ]
+              : []),
+
+            {
+              $project: {
+                products: 1
+              }
+            }
+          ],
+          as: "deals"
+        }
+      },
+
+      // ❌ REMOVE EMPTY HOSPITALS
+      {
+        $match: {
+          deals: { $ne: [] }
+        }
+      },
+
+      // ================= FLATTEN PRODUCT IDS =================
+      {
+        $addFields: {
+          allProductIds: {
+            $reduce: {
+              input: "$deals",
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  "$$value",
+                  {
+                    $map: {
+                      input: { $ifNull: ["$$this.products", []] },
+                      as: "p",
+                      in: "$$p.product"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      // ================= IDN =================
+      {
+        $lookup: {
+          from: "idns",
+          let: { idnId: "$idn" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$idnId"] } } },
+            { $project: { name: 1, user: 1 } }
+          ],
+          as: "idn"
+        }
+      },
+      { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
+
+      // ================= GPO =================
+      {
+        $lookup: {
+          from: "gpos",
+          let: { gpoId: "$gpo" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$gpoId"] } } },
+            { $project: { name: 1, user: 1 } }
+          ],
+          as: "gpo"
+        }
+      },
+      { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
+
+      // ================= PRODUCTS =================
+      {
+        $lookup: {
+          from: "products",
+          localField: "allProductIds",
+          foreignField: "_id",
+          as: "productsData"
+        }
+      },
+
+      // ================= MAP PRODUCT NAMES =================
+      {
+        $addFields: {
+          deals: {
+            $map: {
+              input: "$deals",
+              as: "deal",
+              in: {
+                $mergeObjects: [
+                  "$$deal",
+                  {
+                    products: {
+                      $map: {
+                        input: { $ifNull: ["$$deal.products", []] },
+                        as: "prod",
+                        in: {
+                          $mergeObjects: [
+                            "$$prod",
+                            {
+                              product: {
+                                $arrayElemAt: [
+                                  {
+                                    $map: {
+                                      input: {
+                                        $filter: {
+                                          input: "$productsData",
+                                          as: "p",
+                                          cond: {
+                                            $eq: [
+                                              "$$p._id",
+                                              "$$prod.product"
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      as: "m",
+                                      in: "$$m.name"
+                                    }
+                                  },
+                                  0
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      // ================= ADD LATEST DEAL DATE =================
+      {
+        $addFields: {
+          deals: {
+            $map: {
+              input: "$deals",
+              as: "d",
+              in: {
+                $mergeObjects: [
+                  "$$d",
+                  {
+                    dealMaxDate: {
+                      $max: {
+                        $map: {
+                          input: "$$d.products",
+                          as: "p",
+                          in: "$$p.dealDate"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      // ================= SORT DEALS + LIMIT 2 =================
+      {
+        $addFields: {
+          deals: {
+            $slice: [
+              {
+                $sortArray: {
+                  input: "$deals",
+                  sortBy: { dealMaxDate: -1 } // 🔥 latest first
+                }
+              },
+              2
+            ]
+          }
+        }
+      },
+
+      // ================= DATE CALC =================
+      {
+        $addFields: {
+          allDates: {
+            $reduce: {
+              input: "$deals",
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  "$$value",
+                  {
+                    $map: {
+                      input: "$$this.products",
+                      as: "p",
+                      in: "$$p.expectedCloseDate"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          minExpectedCloseDate: {
+            $min: "$allDates"
+          }
+        }
+      },
+
+      // ================= SEARCH =================
+      ...(search
+        ? [
+          {
+            $match: {
+              $or: [
+                { hospitalName: { $regex: search, $options: "i" } },
+                { city: { $regex: search, $options: "i" } },
+                { "idn.name": { $regex: search, $options: "i" } }
+              ]
+            }
+          }
+        ]
+        : []),
+
+      // ================= SORT HOSPITALS =================
+      {
+        $sort: { minExpectedCloseDate: 1 }
+      },
+
+      // ================= PROJECT =================
+      {
+        $project: {
+          hospitalName: 1,
+          city: 1,
+          state: 1,
+          zip: 1,
+          idn: 1,
+          gpo: 1,
+          deals: 1,
+          minExpectedCloseDate: 1
+        }
+      },
+
+      // ================= PAGINATION =================
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          totalCount: [
+            { $count: "count" }
+          ]
+        }
+      }
+    ];
+
+    const result = await Hospital.aggregate(pipeline);
+
+    const hospitals = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.count || 0;
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalHospitals: total,
+      totalPages: Math.ceil(total / limit),
+      data: hospitals
+    });
+
+  } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
