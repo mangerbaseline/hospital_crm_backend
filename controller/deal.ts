@@ -511,203 +511,8 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
 
 
 
+
 /*
-export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?._id;
-
-    if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
-      return;
-    }
-
-    const objectUserId = new mongoose.Types.ObjectId(userId);
-
-    // 🔥 Parallel counts
-    const [
-      totalHospitals,
-      totalHospitalsInDB,
-      totalProductsInDB
-    ] = await Promise.all([
-      Hospital.countDocuments({ user: objectUserId }),
-      Hospital.countDocuments({}),
-      Product.countDocuments({})
-    ]);
-
-    // 🔥 Aggregation
-    const result = await Deal.aggregate([
-      { $match: { user: objectUserId } },
-      { $unwind: "$products" },
-
-      {
-        $facet: {
-          // ================= TOTALS =================
-          totals: [
-            {
-              $group: {
-                _id: null,
-
-                totalPipelineAmount: {
-                  $sum: "$products.dealAmount"
-                },
-
-                closedWonAmount: {
-                  $sum: {
-                    $cond: [
-                      { $eq: ["$products.stage", "Closed Won"] },
-                      "$products.dealAmount",
-                      0
-                    ]
-                  }
-                },
-
-                implementedAmount: {
-                  $sum: {
-                    $cond: [
-                      { $eq: ["$products.stage", "Implemented"] },
-                      "$products.dealAmount",
-                      0
-                    ]
-                  }
-                }
-              }
-            }
-          ],
-
-          // ================= PIPELINE =================
-          pipeline: [
-            {
-              $group: {
-                _id: "$products.stage",
-                amount: { $sum: "$products.dealAmount" },
-                hospitals: { $addToSet: "$hospital" }
-              }
-            },
-            {
-              $project: {
-                _id: 0,
-                stage: "$_id",
-                amount: 1,
-                hospitalCount: { $size: "$hospitals" }
-              }
-            }
-          ],
-
-          // ================= CLOSED WON =================
-          closedWon: [
-            {
-              $match: { "products.stage": "Closed Won" }
-            },
-            {
-              $group: {
-                _id: "$hospital",
-                products: {
-                  $push: {
-                    _id: "$products._id",
-                    product: "$products.product",
-                    dealAmount: "$products.dealAmount",
-                    stage: "$products.stage",
-                    expectedCloseDate: "$products.expectedCloseDate",
-                    dealDate: "$products.dealDate"
-                  }
-                }
-              }
-            },
-            {
-              $lookup: {
-                from: "hospitals",
-                localField: "_id",
-                foreignField: "_id",
-                as: "hospital"
-              }
-            },
-            { $unwind: "$hospital" },
-            {
-              $project: {
-                _id: "$hospital._id",
-                hospitalName: "$hospital.hospitalName",
-                products: 1
-              }
-            }
-          ],
-
-          // ================= IMPLEMENTED =================
-          implemented: [
-            {
-              $match: { "products.stage": "Implemented" }
-            },
-            {
-              $group: {
-                _id: "$hospital",
-                products: {
-                  $push: {
-                    _id: "$products._id",
-                    product: "$products.product",
-                    dealAmount: "$products.dealAmount",
-                    stage: "$products.stage",
-                    expectedCloseDate: "$products.expectedCloseDate",
-                    dealDate: "$products.dealDate"
-                  }
-                }
-              }
-            },
-            {
-              $lookup: {
-                from: "hospitals",
-                localField: "_id",
-                foreignField: "_id",
-                as: "hospital"
-              }
-            },
-            { $unwind: "$hospital" },
-            {
-              $project: {
-                _id: "$hospital._id",
-                hospitalName: "$hospital.hospitalName",
-                products: 1
-              }
-            }
-          ]
-        }
-      }
-    ]);
-
-    const data = result[0];
-
-    // 🔥 Final response
-    res.status(200).json({
-      success: true,
-      data: {
-        totalHospitals,
-        totalHospitalsInDB,
-        totalProductsInDB,
-
-        totalPipelineAmount: data.totals[0]?.totalPipelineAmount || 0,
-
-        closedWon: {
-          amount: data.totals[0]?.closedWonAmount || 0,
-          hospitals: data.closedWon || []
-        },
-
-        implemented: {
-          amount: data.totals[0]?.implementedAmount || 0,
-          hospitals: data.implemented || []
-        },
-
-        pipeline: data.pipeline || []
-      }
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch dashboard stats",
-      error: error.message
-    });
-  }
-};
-*/
-
 export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?._id;
@@ -940,6 +745,305 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
           notes: notes || [],
           callLogs: callLogs || []
         }
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard stats",
+      error: error.message
+    });
+  }
+};
+*/
+
+export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    // =========================
+    // 🔥 BASIC COUNTS
+    // =========================
+    const [
+      totalHospitals,
+      totalHospitalsInDB,
+      totalProductsInDB
+    ] = await Promise.all([
+      Hospital.countDocuments({ user: objectUserId }),
+      Hospital.countDocuments({}),
+      Product.countDocuments({})
+    ]);
+
+    // =========================
+    // 🔥 TASKS + ACTIVITY
+    // =========================
+    const [
+      tasks,
+      notes,
+      callLogs
+    ] = await Promise.all([
+      Task.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
+      Notes.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
+      CallLog.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5)
+    ]);
+
+    // =========================
+    // 🔥 STAGES
+    // =========================
+    const stages = [
+      "Demo",
+      "CPA",
+      "Committee",
+      "Trial",
+      "Pending Decision",
+      "Closed Won",
+      "Implemented"
+    ];
+
+    // =========================
+    // 🔥 AGGREGATION
+    // =========================
+    const result = await Deal.aggregate([
+      { $match: { user: objectUserId } },
+      { $unwind: "$products" },
+
+      {
+        $facet: {
+          // ================= TOTALS =================
+          totals: [
+            {
+              $group: {
+                _id: null,
+
+                totalPipelineAmount: {
+                  $sum: "$products.dealAmount"
+                },
+
+                closedWonAmount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Closed Won"] },
+                      "$products.dealAmount",
+                      0
+                    ]
+                  }
+                },
+
+                implementedAmount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Implemented"] },
+                      "$products.dealAmount",
+                      0
+                    ]
+                  }
+                },
+
+                // ✅ CLOSED WON COUNT
+                closedWonProductsCount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Closed Won"] },
+                      1,
+                      0
+                    ]
+                  }
+                },
+
+                // ✅ IMPLEMENTED COUNT
+                implementedProductsCount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Implemented"] },
+                      1,
+                      0
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+
+          // ================= PIPELINE =================
+          pipelineRaw: [
+            {
+              $group: {
+                _id: "$products.stage",
+                amount: { $sum: "$products.dealAmount" },
+                hospitals: { $addToSet: "$hospital" }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                stage: "$_id",
+                amount: 1,
+                hospitalCount: { $size: "$hospitals" }
+              }
+            }
+          ],
+
+          // ================= CLOSED WON =================
+          closedWon: [
+            { $match: { "products.stage": "Closed Won" } },
+
+            {
+              $group: {
+                _id: "$hospital",
+                products: {
+                  $push: {
+                    _id: "$products._id",
+                    product: "$products.product",
+                    dealAmount: "$products.dealAmount",
+                    stage: "$products.stage",
+                    expectedCloseDate: "$products.expectedCloseDate",
+                    dealDate: "$products.dealDate"
+                  }
+                }
+              }
+            },
+
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "_id",
+                foreignField: "_id",
+                as: "hospital"
+              }
+            },
+
+            { $unwind: "$hospital" },
+
+            {
+              $project: {
+                _id: "$hospital._id",
+                hospitalName: "$hospital.hospitalName",
+                products: 1
+              }
+            }
+          ],
+
+          // ================= IMPLEMENTED =================
+          implemented: [
+            { $match: { "products.stage": "Implemented" } },
+
+            {
+              $group: {
+                _id: "$hospital",
+                products: {
+                  $push: {
+                    _id: "$products._id",
+                    product: "$products.product",
+                    dealAmount: "$products.dealAmount",
+                    stage: "$products.stage",
+                    expectedCloseDate: "$products.expectedCloseDate",
+                    dealDate: "$products.dealDate"
+                  }
+                }
+              }
+            },
+
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "_id",
+                foreignField: "_id",
+                as: "hospital"
+              }
+            },
+
+            { $unwind: "$hospital" },
+
+            {
+              $project: {
+                _id: "$hospital._id",
+                hospitalName: "$hospital.hospitalName",
+                products: 1
+              }
+            }
+          ]
+        }
+      }
+    ]);
+
+    const data = result[0];
+
+
+    // const pipelineMap = new Map(
+    //   (data?.pipelineRaw || []).map((p: any) => [p.stage, p])
+    // );
+
+    // const pipeline = stages.map(stage => ({
+    //   stage,
+    //   amount: pipelineMap.get(stage)?.amount || 0,
+    //   hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0
+    // }));
+
+    const pipelineMap = new Map<string, any>(
+      (data?.pipelineRaw || []).map((p: any) => [p.stage, p])
+    );
+
+    const pipeline = stages.map(stage => ({
+      stage,
+      amount: pipelineMap.get(stage)?.amount || 0,
+      hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0
+    }));
+
+
+
+    // =========================
+    // 🔥 RESPONSE
+    // =========================
+    res.status(200).json({
+      success: true,
+      data: {
+        totalHospitals,
+        totalHospitalsInDB,
+        totalProductsInDB,
+
+        totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
+
+        // ================= CLOSED WON =================
+        closedWon: {
+          amount: data?.totals?.[0]?.closedWonAmount || 0,
+          productsCount: data?.totals?.[0]?.closedWonProductsCount || 0,
+          hospitals: data?.closedWon || []
+        },
+
+        // ================= IMPLEMENTED =================
+        implemented: {
+          amount: data?.totals?.[0]?.implementedAmount || 0,
+          productsCount: data?.totals?.[0]?.implementedProductsCount || 0,
+          hospitals: data?.implemented || []
+        },
+
+        pipeline,
+
+        // ================= ACTIVITY =================
+        tasks: tasks || [],
+
+        recentActivity: [
+          ...((notes || []).map(n => ({
+            type: "note",
+            data: n,
+            createdAt: n.createdAt
+          }))),
+          ...((callLogs || []).map(c => ({
+            type: "callLog",
+            data: c,
+            createdAt: c.createdAt
+          })))
+        ]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5)
       }
     });
 
