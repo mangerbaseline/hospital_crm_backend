@@ -276,6 +276,7 @@ export const updateHospital = async (req: Request, res: Response): Promise<void>
 };
 */
 
+/*
 export const updateHospital = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -312,7 +313,54 @@ export const updateHospital = async (req: Request, res: Response): Promise<void>
     });
   }
 };
+*/
 
+export const updateHospital = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (typeof id !== 'string') {
+      res.status(400).json({ success: false, message: 'Invalid ID' });
+      return;
+    }
+
+    // 🔥 1. Update hospital
+    const updatedHospital = await Hospital.findByIdAndUpdate(
+      id,
+      req.body,
+      { new: true, runValidators: true }
+    )
+      .populate("idn", "name")
+      .populate("gpo", "name")
+      .populate("contacts", "firstName lastName designation phoneNumber email");
+
+    if (!updatedHospital) {
+      res.status(404).json({ success: false, message: 'Hospital not found' });
+      return;
+    }
+
+    // 🔥 2. Fetch deals for this hospital
+    const deals = await Deal.find({ hospital: id })
+      .select("_id products")
+      .populate("products.product", "name"); // 👈 populate product inside array
+
+    // 🔥 3. Send combined response
+    res.status(200).json({
+      success: true,
+      data: {
+        ...updatedHospital.toObject(),
+        deals // 👈 attach deals here
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update hospital',
+      error: error.message
+    });
+  }
+};
 
 
 
