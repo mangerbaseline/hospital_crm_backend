@@ -925,13 +925,6 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
 
 
 
-
-
-
-
-
-
-
 export const removeProductFromDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const hospitalId = req.query.hospitalId as string;
@@ -1104,147 +1097,8 @@ export const updateProductInDeal = async (req: Request, res: Response): Promise<
 };
 
 
+
 /*
-export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?._id;
-
-    if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: "Unauthorized"
-      });
-      return;
-    }
-
-    const objectUserId = new mongoose.Types.ObjectId(userId);
-
-    // 🔥 1. Hospitals created by user
-    const myHospitals = await Hospital.find({ user: objectUserId }).select("_id");
-    const totalHospitals = myHospitals.length;
-
-    // 🔥 2. Aggregate deals
-    const dealStats = await Deal.aggregate([
-      {
-        $match: {
-          user: objectUserId
-        }
-      },
-      {
-        $unwind: "$products"
-      },
-      {
-        $group: {
-          _id: null,
-          totalPipelineAmount: {
-            $sum: "$products.dealAmount"
-          },
-          closedWonAmount: {
-            $sum: {
-              $cond: [
-                { $eq: ["$products.stage", "Closed Won"] },
-                "$products.dealAmount",
-                0
-              ]
-            }
-          },
-          closedWonHospitals: {
-            $addToSet: {
-              $cond: [
-                { $eq: ["$products.stage", "Closed Won"] },
-                "$hospital",
-                "$$REMOVE"
-              ]
-            }
-          },
-          stages: {
-            $push: {
-              stage: "$products.stage",
-              amount: "$products.dealAmount",
-              hospital: "$hospital"
-            }
-          }
-        }
-      }
-    ]);
-
-    const stats = dealStats[0] || {
-      totalPipelineAmount: 0,
-      closedWonAmount: 0,
-      closedWonHospitals: [],
-      stages: []
-    };
-
-    // 🔥 3. Populate Closed Won hospitals
-    const populatedClosedWonHospitals = await Hospital.find({
-      _id: { $in: stats.closedWonHospitals }
-    })
-      .select("hospitalName city state")
-      .populate("idn", "name")
-      .populate("gpo", "name");
-
-    // 🔥 4. Stage-wise aggregation
-    const stageMap: Record<
-      string,
-      { amount: number; hospitals: Set<string> }
-    > = {};
-
-    stats.stages.forEach((item: any) => {
-      if (!item.stage) return;
-
-      const stageKey = item.stage;
-
-      if (!stageMap[stageKey]) {
-        stageMap[stageKey] = {
-          amount: 0,
-          hospitals: new Set<string>()
-        };
-      }
-
-      const stageData = stageMap[stageKey]!;
-
-      stageData.amount += item.amount ?? 0;
-
-      if (item.hospital) {
-        stageData.hospitals.add(item.hospital.toString());
-      }
-    });
-
-    // 🔥 5. Pipeline response
-    const pipelineData = Object.keys(stageMap).map(stage => {
-      const stageData = stageMap[stage]!;
-
-      return {
-        stage,
-        amount: stageData.amount,
-        hospitalCount: stageData.hospitals.size
-      };
-    });
-
-    // 🔥 6. Final response
-    res.status(200).json({
-      success: true,
-      data: {
-        totalHospitals,
-        totalPipelineAmount: stats.totalPipelineAmount || 0,
-        closedWon: {
-          amount: stats.closedWonAmount || 0,
-          hospitals: populatedClosedWonHospitals
-        },
-        pipeline: pipelineData
-      }
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch dashboard stats",
-      error: error.message
-    });
-  }
-};
-*/
-
 export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?._id;
@@ -1398,6 +1252,171 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
           amount: data.totals[0]?.closedWonAmount || 0,
           hospitals: data.closedWon
         },
+        pipeline: data.pipeline
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard stats",
+      error: error.message
+    });
+  }
+};
+*/
+
+export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    // 🔥 Run independent counts in parallel (faster)
+    const [
+      totalHospitals,
+      totalHospitalsInDB,
+      totalProductsInDB
+    ] = await Promise.all([
+      Hospital.countDocuments({ user: objectUserId }), // user-specific
+      Hospital.countDocuments({}),                    // global hospitals
+      Product.countDocuments({})                      // global products
+    ]);
+
+    // 🔥 SINGLE aggregation for dashboard stats
+    const result = await Deal.aggregate([
+      { $match: { user: objectUserId } },
+      { $unwind: "$products" },
+
+      {
+        $facet: {
+          // ✅ TOTALS
+          totals: [
+            {
+              $group: {
+                _id: null,
+                totalPipelineAmount: { $sum: "$products.dealAmount" },
+                closedWonAmount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Closed Won"] },
+                      "$products.dealAmount",
+                      0
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+
+          // ✅ PIPELINE
+          pipeline: [
+            {
+              $group: {
+                _id: "$products.stage",
+                amount: { $sum: "$products.dealAmount" },
+                hospitals: { $addToSet: "$hospital" }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                stage: "$_id",
+                amount: 1,
+                hospitalCount: { $size: "$hospitals" }
+              }
+            }
+          ],
+
+          // ✅ CLOSED WON
+          closedWon: [
+            {
+              $match: { "products.stage": "Closed Won" }
+            },
+            {
+              $group: {
+                _id: "$hospital",
+                products: {
+                  $push: {
+                    _id: "$products._id",
+                    product: "$products.product",
+                    dealAmount: "$products.dealAmount",
+                    stage: "$products.stage",
+                    expectedCloseDate: "$products.expectedCloseDate",
+                    dealDate: "$products.dealDate"
+                  }
+                }
+              }
+            },
+
+            // 🔥 JOIN hospital
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "_id",
+                foreignField: "_id",
+                as: "hospital"
+              }
+            },
+            { $unwind: "$hospital" },
+
+            // 🔥 JOIN IDN
+            {
+              $lookup: {
+                from: "idns",
+                localField: "hospital.idn",
+                foreignField: "_id",
+                as: "idn"
+              }
+            },
+            { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
+
+            // 🔥 JOIN GPO
+            {
+              $lookup: {
+                from: "gpos",
+                localField: "hospital.gpo",
+                foreignField: "_id",
+                as: "gpo"
+              }
+            },
+            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
+
+            // 🔥 PROJECT
+            {
+              $project: {
+                _id: "$hospital._id",
+                hospitalName: "$hospital.hospitalName",
+                products: 1
+              }
+            }
+          ]
+        }
+      }
+    ]);
+
+    const data = result[0];
+
+    // 🔥 Final response
+    res.status(200).json({
+      success: true,
+      data: {
+        totalHospitals,            // user-specific hospitals
+        totalHospitalsInDB,        // global hospitals
+        totalProductsInDB,         // global products
+
+        totalPipelineAmount: data.totals[0]?.totalPipelineAmount || 0,
+
+        closedWon: {
+          amount: data.totals[0]?.closedWonAmount || 0,
+          hospitals: data.closedWon
+        },
+
         pipeline: data.pipeline
       }
     });
