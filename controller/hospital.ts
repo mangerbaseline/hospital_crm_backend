@@ -1117,8 +1117,8 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
-    const search = (req.query.search as string) || "";
 
+    const search = (req.query.search as string) || "";
     const userId = req.query.userId as string;
     const productStage = req.query.productStage as string;
 
@@ -1134,7 +1134,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
       pipeline.push({ $match: { user: filterUserId } });
     }
 
-    // ================= LOOKUP DEALS =================
+    // ================= DEALS LOOKUP =================
     pipeline.push({
       $lookup: {
         from: "deals",
@@ -1146,7 +1146,6 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
             }
           },
 
-          // ✅ FILTER BY STAGE (INSIDE DEALS)
           ...(productStage
             ? [
               {
@@ -1167,7 +1166,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
       }
     });
 
-    // 🔥 IMPORTANT FIX: REMOVE HOSPITALS WITH EMPTY DEALS WHEN FILTER IS APPLIED
+    // ================= REMOVE EMPTY HOSPITALS ONLY WHEN FILTERED =================
     if (productStage) {
       pipeline.push({
         $match: {
@@ -1296,7 +1295,52 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
       }
     });
 
-    // ================= LATEST DATE CALC =================
+    // ================= ADD LATEST DEAL DATE =================
+    pipeline.push({
+      $addFields: {
+        deals: {
+          $map: {
+            input: { $ifNull: ["$deals", []] },
+            as: "d",
+            in: {
+              $mergeObjects: [
+                "$$d",
+                {
+                  dealMaxDate: {
+                    $max: {
+                      $map: {
+                        input: { $ifNull: ["$$d.products", []] },
+                        as: "p",
+                        in: "$$p.dealDate"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    // ================= SORT + LIMIT 2 LATEST DEALS =================
+    pipeline.push({
+      $addFields: {
+        deals: {
+          $slice: [
+            {
+              $sortArray: {
+                input: "$deals",
+                sortBy: { dealMaxDate: -1 }
+              }
+            },
+            2
+          ]
+        }
+      }
+    });
+
+    // ================= DATE CALC =================
     pipeline.push({
       $addFields: {
         allDates: {
