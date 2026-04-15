@@ -5,6 +5,8 @@ import Notes from '../model/Notes.ts';
 import CallLogs from '../model/CallLogs.ts';
 import mongoose from "mongoose";
 
+
+
 export const getActivities = async (req: Request, res: Response): Promise<void> => {
     try {
         const hospitalId = req.query.hospitalId as string;

@@ -4,7 +4,9 @@ import Deal from '../model/deal.ts';
 import mongoose from 'mongoose';
 import Product from '../model/Product.ts';
 import Hospital from '../model/Hospital.ts';
-
+import Task from '../model/Task.ts';
+import Notes from '../model/Notes.ts';
+import CallLog from '../model/CallLogs.ts';
 
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -250,54 +252,6 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 };
 
 
-/*
-export const getDealById = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const deal = await Deal.findById(id)
-      .populate('hospital')
-      .populate('contact')
-      .populate('products')
-      .populate('user', 'name email');
-
-    if (!deal) {
-      res.status(404).json({ success: false, message: 'Deal not found' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: deal });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Error fetching deal', error: error.message });
-  }
-};
-*/
-
-/*
-export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const dealData = {
-      ...req.body,
-      user: req.user?._id
-    };
-
-    const newDeal = new Deal(dealData);
-    await newDeal.save();
-
-    res.status(201).json({
-      success: true,
-      data: newDeal
-    });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: 'Failed to create deal',
-      error: error.message
-    });
-  }
-};
-*/
-
-
 export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { products, ...rest } = req.body;
@@ -334,105 +288,6 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
 };
 
 
-/*
-export const updateDeal = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    const updatedDeal = await Deal.findByIdAndUpdate(
-      id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedDeal) {
-      res.status(404).json({ success: false, message: 'Deal not found' });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      data: updatedDeal
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update deal',
-      error: error.message
-    });
-  }
-};
-*/
-
-
-/*
-export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { dealId, hospitalId, productId, stage } = req.body;
-
-    // ✅ Validation
-    if (!dealId || !hospitalId || !productId || !stage) {
-      res.status(400).json({
-        success: false,
-        message: "dealId, hospitalId, productId and stage are required"
-      });
-      return;
-    }
-
-    // ✅ Validate ObjectIds
-    if (
-      !mongoose.Types.ObjectId.isValid(dealId) ||
-      !mongoose.Types.ObjectId.isValid(hospitalId) ||
-      !mongoose.Types.ObjectId.isValid(productId)
-    ) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid ObjectId(s)"
-      });
-      return;
-    }
-
-    // ✅ Update stage
-    const updatedDeal = await Deal.findOneAndUpdate(
-      {
-        _id: new mongoose.Types.ObjectId(dealId as string),
-        hospital: new mongoose.Types.ObjectId(hospitalId as string),
-        "products.product": new mongoose.Types.ObjectId(productId as string)
-      },
-      {
-        $set: {
-          "products.$.stage": stage
-        }
-      },
-      {
-        new: true,
-        runValidators: true
-      }
-    );
-
-    if (!updatedDeal) {
-      res.status(404).json({
-        success: false,
-        message: "Deal or product not found"
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Stage updated successfully",
-      data: updatedDeal
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update stage",
-      error: error.message
-    });
-  }
-};
-*/
 
 export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -500,59 +355,6 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
 };
 
 
-
-/*
-export const removeProductFromDeal = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const hospitalId = req.query.hospitalId as string;
-    const productItemId = req.query.productItemId as string; // 👈 use embedded _id
-
-    if (!hospitalId || !productItemId) {
-      res.status(400).json({
-        success: false,
-        message: "hospitalId and productItemId are required"
-      });
-      return;
-    }
-
-    const updatedDeal = await Deal.findOneAndUpdate(
-      {
-        hospital: hospitalId,
-        "products._id": productItemId // ✅ match exact item
-      },
-      {
-        $pull: {
-          products: { _id: productItemId } // ✅ remove by _id
-        }
-      },
-      { new: true }
-    );
-
-    if (!updatedDeal) {
-      res.status(404).json({
-        success: false,
-        message: "Deal or product item not found"
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Product removed successfully",
-      data: updatedDeal
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to remove product",
-      error: error.message
-    });
-  }
-};
-*/
-
-
 export const removeDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const dealId = req.params.dealId || req.query.dealId as string;
@@ -590,68 +392,6 @@ export const removeDeal = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-/*
-export const addProductToDeal = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const hospitalId = req.query.hospitalId as string;
-
-    const {
-      product,
-      dealAmount,
-      stage,
-      expectedCloseDate,
-      dealDate
-    } = req.body;
-
-    if (!hospitalId || !product) {
-      res.status(400).json({
-        success: false,
-        message: "hospitalId and product are required"
-      });
-      return;
-    }
-
-    const newProduct = {
-      product,
-      dealAmount,
-      stage,
-      expectedCloseDate,
-      dealDate
-    };
-
-    const updatedDeal = await Deal.findOneAndUpdate(
-      { hospital: hospitalId },
-      {
-        $push: {
-          products: newProduct
-        }
-      },
-      { new: true }
-    );
-
-    if (!updatedDeal) {
-      res.status(404).json({
-        success: false,
-        message: "Deal not found for this hospital"
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Product added successfully",
-      data: updatedDeal
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to add product",
-      error: error.message
-    });
-  }
-};
-*/
 
 export const addProductToDeal = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -708,68 +448,6 @@ export const addProductToDeal = async (req: Request, res: Response): Promise<voi
   }
 };
 
-/*
-export const updateProductInDeal = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const hospitalId = req.query.hospitalId as string;
-    const productItemId = req.query.productItemId as string; // 👈 THIS is products._id
-
-    const {
-      dealAmount,
-      stage,
-      expectedCloseDate,
-      dealDate
-    } = req.body;
-
-    if (!hospitalId || !productItemId) {
-      res.status(400).json({
-        success: false,
-        message: "hospitalId and productItemId are required"
-      });
-      return;
-    }
-
-    const updateFields: any = {};
-
-    if (dealAmount !== undefined) updateFields["products.$.dealAmount"] = dealAmount;
-    if (stage) updateFields["products.$.stage"] = stage;
-    if (expectedCloseDate) updateFields["products.$.expectedCloseDate"] = expectedCloseDate;
-    if (dealDate) updateFields["products.$.dealDate"] = dealDate;
-
-    const updatedDeal = await Deal.findOneAndUpdate(
-      {
-        hospital: hospitalId,
-        "products._id": productItemId // ✅ match by embedded _id
-      },
-      {
-        $set: updateFields
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedDeal) {
-      res.status(404).json({
-        success: false,
-        message: "Deal or product item not found"
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Product updated successfully",
-      data: updatedDeal
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update product",
-      error: error.message
-    });
-  }
-};
-*/
 
 export const updateDeal = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -831,6 +509,9 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
 };
 
 
+
+
+/*
 export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?._id;
@@ -1014,6 +695,251 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
         },
 
         pipeline: data.pipeline || []
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard stats",
+      error: error.message
+    });
+  }
+};
+*/
+
+export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    // =========================
+    // 🔥 BASIC COUNTS (PARALLEL)
+    // =========================
+    const [
+      totalHospitals,
+      totalHospitalsInDB,
+      totalProductsInDB
+    ] = await Promise.all([
+      Hospital.countDocuments({ user: objectUserId }),
+      Hospital.countDocuments({}),
+      Product.countDocuments({})
+    ]);
+
+    // =========================
+    // 🔥 TASKS + ACTIVITY (LATEST 5)
+    // =========================
+    const [
+      tasks,
+      notes,
+      callLogs
+    ] = await Promise.all([
+      Task.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
+      Notes.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
+      CallLog.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5)
+    ]);
+
+    // =========================
+    // 🔥 PIPELINE STAGES MASTER
+    // =========================
+    const stages = [
+      "Demo",
+      "CPA",
+      "Committee",
+      "Trial",
+      "Pending Decision",
+      "Closed Won",
+      "Implemented"
+    ];
+
+    // =========================
+    // 🔥 MAIN AGGREGATION
+    // =========================
+    const result = await Deal.aggregate([
+      { $match: { user: objectUserId } },
+      { $unwind: "$products" },
+
+      {
+        $facet: {
+          totals: [
+            {
+              $group: {
+                _id: null,
+
+                totalPipelineAmount: { $sum: "$products.dealAmount" },
+
+                closedWonAmount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Closed Won"] },
+                      "$products.dealAmount",
+                      0
+                    ]
+                  }
+                },
+
+                implementedAmount: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ["$products.stage", "Implemented"] },
+                      "$products.dealAmount",
+                      0
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+
+          pipelineRaw: [
+            {
+              $group: {
+                _id: "$products.stage",
+                amount: { $sum: "$products.dealAmount" },
+                hospitals: { $addToSet: "$hospital" }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                stage: "$_id",
+                amount: 1,
+                hospitalCount: { $size: "$hospitals" }
+              }
+            }
+          ],
+
+          closedWon: [
+            {
+              $match: { "products.stage": "Closed Won" }
+            },
+            {
+              $group: {
+                _id: "$hospital",
+                products: {
+                  $push: {
+                    _id: "$products._id",
+                    product: "$products.product",
+                    dealAmount: "$products.dealAmount",
+                    stage: "$products.stage",
+                    expectedCloseDate: "$products.expectedCloseDate",
+                    dealDate: "$products.dealDate"
+                  }
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "_id",
+                foreignField: "_id",
+                as: "hospital"
+              }
+            },
+            { $unwind: "$hospital" },
+            {
+              $project: {
+                _id: "$hospital._id",
+                hospitalName: "$hospital.hospitalName",
+                products: 1
+              }
+            }
+          ],
+
+          implemented: [
+            {
+              $match: { "products.stage": "Implemented" }
+            },
+            {
+              $group: {
+                _id: "$hospital",
+                products: {
+                  $push: {
+                    _id: "$products._id",
+                    product: "$products.product",
+                    dealAmount: "$products.dealAmount",
+                    stage: "$products.stage",
+                    expectedCloseDate: "$products.expectedCloseDate",
+                    dealDate: "$products.dealDate"
+                  }
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "_id",
+                foreignField: "_id",
+                as: "hospital"
+              }
+            },
+            { $unwind: "$hospital" },
+            {
+              $project: {
+                _id: "$hospital._id",
+                hospitalName: "$hospital.hospitalName",
+                products: 1
+              }
+            }
+          ]
+        }
+      }
+    ]);
+
+    const data = result[0];
+
+    // =========================
+    // 🔥 NORMALIZE PIPELINE (ADD MISSING STAGES = 0)
+    // =========================
+    const pipelineMap = new Map<string, any>(
+      (data?.pipelineRaw || []).map((p: any) => [p.stage, p])
+    );
+
+    const pipeline = stages.map(stage => ({
+      stage,
+      amount: pipelineMap.get(stage)?.amount || 0,
+      hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0
+    }));
+
+    // =========================
+    // 🔥 FINAL RESPONSE
+    // =========================
+    res.status(200).json({
+      success: true,
+      data: {
+        totalHospitals,
+        totalHospitalsInDB,
+        totalProductsInDB,
+
+        totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
+
+        closedWon: {
+          amount: data?.totals?.[0]?.closedWonAmount || 0,
+          hospitals: data?.closedWon || []
+        },
+
+        implemented: {
+          amount: data?.totals?.[0]?.implementedAmount || 0,
+          hospitals: data?.implemented || []
+        },
+
+        pipeline, // ✅ now includes ALL stages (even 0)
+
+        // =========================
+        // 🔥 TASKS + ACTIVITY
+        // =========================
+        tasks: tasks || [],
+
+        recentActivity: {
+          notes: notes || [],
+          callLogs: callLogs || []
+        }
       }
     });
 
