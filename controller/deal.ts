@@ -363,22 +363,6 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
 };
 */
 
-export const deleteDeal = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    const deletedDeal = await Deal.findByIdAndDelete(id);
-
-    if (!deletedDeal) {
-      res.status(404).json({ success: false, message: 'Deal not found' });
-      return;
-    }
-
-    res.status(200).json({ success: true, message: 'Deal deleted successfully' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Error deleting deal', error: error.message });
-  }
-};
 
 /*
 export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
@@ -593,7 +577,7 @@ export const removeDeal = async (req: Request, res: Response): Promise<void> => 
     res.status(200).json({
       success: true,
       message: "Deal deleted successfully",
-      data: deletedDeal
+      //  data: deletedDeal
     });
 
   } catch (error: any) {
@@ -789,6 +773,8 @@ export const updateProductInDeal = async (req: Request, res: Response): Promise<
 export const updateDeal = async (req: Request, res: Response): Promise<void> => {
   try {
     const dealId = req.params.dealId || (req.query.dealId as string);
+
+    // console.log(dealId)
 
     const {
       dealAmount,
