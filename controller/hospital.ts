@@ -1127,6 +1127,8 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
       : null;
 
     const pipeline: any[] = [
+
+      // ================= USER FILTER =================
       ...(filterUserId ? [{ $match: { user: filterUserId } }] : []),
 
       // ================= DEALS LOOKUP =================
@@ -1141,6 +1143,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
               }
             },
 
+            // ✅ PRODUCT STAGE FILTER (INSIDE DEALS ONLY)
             ...(productStage
               ? [
                 {
@@ -1161,19 +1164,12 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }
       },
 
-      // ❌ REMOVE EMPTY HOSPITALS
-      {
-        $match: {
-          deals: { $ne: [] }
-        }
-      },
-
-      // ================= FLATTEN PRODUCT IDS =================
+      // ================= SAFE FLATTEN PRODUCT IDS =================
       {
         $addFields: {
           allProductIds: {
             $reduce: {
-              input: "$deals",
+              input: { $ifNull: ["$deals", []] },
               initialValue: [],
               in: {
                 $concatArrays: [
@@ -1235,7 +1231,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         $addFields: {
           deals: {
             $map: {
-              input: "$deals",
+              input: { $ifNull: ["$deals", []] },
               as: "deal",
               in: {
                 $mergeObjects: [
@@ -1258,10 +1254,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                                           input: "$productsData",
                                           as: "p",
                                           cond: {
-                                            $eq: [
-                                              "$$p._id",
-                                              "$$prod.product"
-                                            ]
+                                            $eq: ["$$p._id", "$$prod.product"]
                                           }
                                         }
                                       },
@@ -1290,7 +1283,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         $addFields: {
           deals: {
             $map: {
-              input: "$deals",
+              input: { $ifNull: ["$deals", []] },
               as: "d",
               in: {
                 $mergeObjects: [
@@ -1299,7 +1292,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                     dealMaxDate: {
                       $max: {
                         $map: {
-                          input: "$$d.products",
+                          input: { $ifNull: ["$$d.products", []] },
                           as: "p",
                           in: "$$p.dealDate"
                         }
@@ -1313,7 +1306,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         }
       },
 
-      // ================= SORT DEALS + LIMIT 2 =================
+      // ================= SORT + TAKE ONLY 2 LATEST DEALS =================
       {
         $addFields: {
           deals: {
@@ -1321,7 +1314,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
               {
                 $sortArray: {
                   input: "$deals",
-                  sortBy: { dealMaxDate: -1 } // 🔥 latest first
+                  sortBy: { dealMaxDate: -1 }
                 }
               },
               2
@@ -1335,7 +1328,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         $addFields: {
           allDates: {
             $reduce: {
-              input: "$deals",
+              input: { $ifNull: ["$deals", []] },
               initialValue: [],
               in: {
                 $concatArrays: [
@@ -1382,7 +1375,7 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         $sort: { minExpectedCloseDate: 1 }
       },
 
-      // ================= PROJECT =================
+      // ================= FINAL PROJECT =================
       {
         $project: {
           hospitalName: 1,
