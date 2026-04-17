@@ -21,6 +21,7 @@ import callLogRoutes from './routes/callLogs.ts';
 import activityRoutes from './routes/activity.ts';
 import graphRoutes from './routes/graph.ts';
 import documentRoutes from "./routes/document.ts";
+import emailRoutes from './routes/email.ts';
 
 // Load environment variables
 dotenv.config();
@@ -86,6 +87,7 @@ app.use('/api/call-log', callLogRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/graph', graphRoutes);
 app.use("/api/document", documentRoutes);
+app.use('/api/email', emailRoutes);
 
 // Start server
 const startServer = async () => {
