@@ -458,9 +458,9 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
     const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
     const closedBusiness = result[0]?.closedBusiness[0]?.count || 0;
 
-    // =========================
-    // 🔥 PRODUCT REVENUE
-    // =========================
+
+
+    /*
     const productRevenue = await Product.aggregate([
       {
         $lookup: {
@@ -515,10 +515,87 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 
       { $sort: { ARR: -1 } }
     ]);
+*/
 
     // =========================
-    // 🔥 FINAL RESPONSE
+    // 🔥 PRODUCT REVENUE (FIXED)
     // =========================
+    const productRevenue = await Product.aggregate([
+      {
+        $lookup: {
+          from: "deals",
+          let: { productId: "$_id" },
+          pipeline: [
+            // 🔥 USER FILTER (important)
+            ...(userId && mongoose.Types.ObjectId.isValid(userId)
+              ? [
+                {
+                  $match: {
+                    user: new mongoose.Types.ObjectId(userId)
+                  }
+                }
+              ]
+              : []),
+
+            { $unwind: "$products" },
+
+            // 🔥 PRODUCT MATCH
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$products.product", "$$productId"]
+                }
+              }
+            }
+          ],
+          as: "dealData"
+        }
+      },
+
+      // =========================
+      // 🔥 ARR LOGIC (UPDATED)
+      // =========================
+      {
+        $addFields: {
+          ARR: {
+            $cond: [
+              // if productId is passed → only that product gets real revenue
+              productId && mongoose.Types.ObjectId.isValid(productId)
+                ? {
+                  $eq: [
+                    "$_id",
+                    new mongoose.Types.ObjectId(productId)
+                  ]
+                }
+                : true,
+
+              // true case → sum revenue
+              {
+                $sum: "$dealData.products.dealAmount"
+              },
+
+              // false case → force 0
+              0
+            ]
+          }
+        }
+      },
+
+      {
+        $project: {
+          _id: 0,
+          productId: "$_id",
+          productName: "$name",
+          ARR: 1
+        }
+      },
+
+      { $sort: { ARR: -1 } }
+    ]);
+
+
+
+
     res.status(200).json({
       success: true,
       totalDeals: deals.length,
