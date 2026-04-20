@@ -52,6 +52,60 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
   }
 };
 
+
+
+export const getUsersAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // Query params
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    const skip = (page - 1) * limit;
+
+    const searchQuery: any = search
+      ? {
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } }
+        ]
+      }
+      : {};
+
+    // Exclude the current user
+    if (req.user) {
+      searchQuery._id = { $ne: req.user._id };
+    }
+
+    // Fetch users
+    const users = await User.find(searchQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await User.countDocuments(searchQuery);
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalUsers: total,
+      totalPages: Math.ceil(total / limit),
+      data: users
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve users",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -214,7 +268,7 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 export const updateUserStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = req.query.id as string;
-    const activeQuery = req.query.active as string;
+    const active = req.query.active === 'true';
 
     if (!id) {
       res.status(400).json({
@@ -223,16 +277,6 @@ export const updateUserStatus = async (req: Request, res: Response): Promise<voi
       });
       return;
     }
-
-    if (activeQuery === undefined) {
-      res.status(400).json({
-        success: false,
-        message: 'Active status is required in query (true or false)'
-      });
-      return;
-    }
-
-    const active = activeQuery === 'true';
 
     const user = await User.findByIdAndUpdate(
       id,
