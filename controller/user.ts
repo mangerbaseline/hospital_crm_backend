@@ -204,3 +204,54 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
     });
   }
 };
+
+export const updateUserStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.query.id as string;
+    const activeQuery = req.query.active as string;
+
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        message: 'User ID is required in query'
+      });
+      return;
+    }
+
+    if (activeQuery === undefined) {
+      res.status(400).json({
+        success: false,
+        message: 'Active status is required in query (true or false)'
+      });
+      return;
+    }
+
+    const active = activeQuery === 'true';
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { active },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `User ${active ? 'activated' : 'deactivated'} successfully`,
+      data: user
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update user status',
+      error: error.message
+    });
+  }
+};

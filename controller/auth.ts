@@ -81,6 +81,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const user = await User.findOne({ email }).select('+password');
 
     if (user && (await user.comparePassword(password))) {
+      if (!user.active) {
+        res.status(401).json({ success: false, message: 'Your account is deactivated. Please contact admin.' });
+        return;
+      }
       const token = generateToken(user.id);
 
       // Set cookie

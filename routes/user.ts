@@ -1,5 +1,5 @@
 import express from 'express';
-import { getUsers, getUserById, createUser, updateUser, deleteUser } from '../controller/user.ts';
+import { getUsers, getUserById, createUser, updateUser, deleteUser, updateUserStatus } from '../controller/user.ts';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.ts';
 import { UserRole } from '../model/User.ts';
 
@@ -10,6 +10,7 @@ router.get('/all-users', authorizeRoles(UserRole.ADMIN), getUsers);
 router.post('/create', authorizeRoles(UserRole.ADMIN), createUser);
 router.get('/:id', authorizeRoles(UserRole.ADMIN), getUserById);
 router.put('/:id', authorizeRoles(UserRole.ADMIN), updateUser);
+router.patch('/status', authorizeRoles(UserRole.ADMIN), updateUserStatus);
 router.delete('/:id', authorizeRoles(UserRole.ADMIN), deleteUser);
 
 

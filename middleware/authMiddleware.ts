@@ -31,6 +31,11 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
         return;
       }
 
+      if (!user.active) {
+        res.status(401).json({ message: 'Not authorized, account is deactivated' });
+        return;
+      }
+
       req.user = user;
       next();
     } catch (error) {
