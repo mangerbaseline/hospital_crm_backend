@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
 import User from '../model/User.ts';
 import { validatePassword, validateEmail } from '../helper/user.ts';
+import type { AuthRequest } from '../middleware/authMiddleware.ts';
 
 
-export const getUsers = async (req: Request, res: Response): Promise<void> => {
+export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     // Query params
     const page = parseInt(req.query.page as string) || 1;
@@ -12,7 +13,7 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
 
     const skip = (page - 1) * limit;
 
-    const searchQuery = search
+    const searchQuery: any = search
       ? {
         $or: [
           { name: { $regex: search, $options: "i" } },
@@ -20,6 +21,11 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
         ]
       }
       : {};
+
+    // Exclude the current user
+    if (req.user) {
+      searchQuery._id = { $ne: req.user._id };
+    }
 
     // Fetch users
     const users = await User.find(searchQuery)
