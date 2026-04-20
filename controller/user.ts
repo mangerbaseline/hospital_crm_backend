@@ -13,7 +13,7 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
 
     const skip = (page - 1) * limit;
 
-    const searchQuery: any = search
+    const searchQuery = search
       ? {
         $or: [
           { name: { $regex: search, $options: "i" } },
@@ -21,11 +21,6 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
         ]
       }
       : {};
-
-    // Exclude the current user
-    if (req.user) {
-      searchQuery._id = { $ne: req.user._id };
-    }
 
     // Fetch users
     const users = await User.find(searchQuery)
