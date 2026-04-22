@@ -99,8 +99,6 @@ export const getUsersAdmin = async (req: AuthRequest, res: Response): Promise<vo
 
 
 
-
-
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
