@@ -32,16 +32,12 @@ const getMsalConfig = () => {
     };
 };
 
-/**
- * Helper to get MSAL Client Instance
- */
+
 const getMsalClient = () => {
     return new msal.ConfidentialClientApplication(getMsalConfig());
 };
 
-/**
- * Get Access Token using Client Credentials (App-Only)
- */
+
 const getAppOnlyToken = async () => {
     const client = getMsalClient();
     const tokenRequest = {
@@ -53,10 +49,7 @@ const getAppOnlyToken = async () => {
     return response.accessToken;
 };
 
-/**
- * Fetch Messages from ANY mailbox (App-Only)
- * Usage: GET /api/graph-app/messages/:email
- */
+
 export const getMailboxMessages = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { email } = req.params;
@@ -96,11 +89,7 @@ export const getMailboxMessages = async (req: AuthRequest, res: Response): Promi
     }
 };
 
-/**
- * Send Email from ANY mailbox (App-Only)
- * Usage: POST /api/graph-app/send
- * Body: { fromEmail, toEmail, subject, content }
- */
+
 export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { fromEmail, toEmail, subject, content } = req.body;
