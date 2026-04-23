@@ -6,7 +6,7 @@ import { UserRole } from '../model/User.ts';
 const router = express.Router();
 router.use(protect);
 
-router.get('/all-users', authorizeRoles(UserRole.ADMIN), getUsers);
+router.get('/all-users', getUsers);
 router.get('/all-users-admin', authorizeRoles(UserRole.ADMIN), getUsersAdmin);
 router.post('/create', authorizeRoles(UserRole.ADMIN), createUser);
 router.get('/:id', authorizeRoles(UserRole.ADMIN), getUserById);
