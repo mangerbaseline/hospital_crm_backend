@@ -144,7 +144,7 @@ export const microsoftCallback = async (req: Request, res: Response): Promise<vo
                 accessToken: access_token,
                 refreshToken: refresh_token
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
 
         // Redirect back to frontend

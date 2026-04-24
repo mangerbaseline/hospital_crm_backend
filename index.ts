@@ -21,7 +21,6 @@ import callLogRoutes from './routes/callLogs.ts';
 import activityRoutes from './routes/activity.ts';
 import graphRoutes from './routes/graph.ts';
 import documentRoutes from "./routes/document.ts";
-import emailRoutes from './routes/email.ts';
 import graphCertRoutes from './routes/graphCertificate.ts';
 import graphAppOnlyRoutes from './routes/graphAppOnly.ts';
 
@@ -90,7 +89,6 @@ app.use('/api/call-log', callLogRoutes);
 app.use('/api/activity', activityRoutes);
 // app.use('/api/graph', graphRoutes);
 app.use("/api/document", documentRoutes);
-app.use('/api/email', emailRoutes);
 // app.use('/api/graph-cert', graphCertRoutes);
 app.use('/api/graph-app', graphAppOnlyRoutes);
 

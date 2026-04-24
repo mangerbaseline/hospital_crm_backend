@@ -1,10 +1,15 @@
 import express from 'express';
-import { getMailboxMessages, sendMailFromMailbox } from '../controller/graphAppOnlyAPI.ts';
+import { getMailboxMessages, sendMailFromMailbox, syncMailboxMessages, getSentEmailsFromDB, getReceivedEmailsFromDB } from '../controller/graphAppOnlyAPI.ts';
 import { protect } from '../middleware/authMiddleware.ts';
 
 const router = express.Router();
 
-router.get('/messages/:email', protect, getMailboxMessages);
-router.post('/send', protect, sendMailFromMailbox);
+router.get('/messages', protect, getMailboxMessages); // get email messages from graph API outllok Azure
+
+router.get('/sent-emails', protect, getSentEmailsFromDB); // Get Sent Emails from DB
+router.get('/received-emails', protect, getReceivedEmailsFromDB); // Get Received Emails from DB
+
+router.post('/sync', protect, syncMailboxMessages); // Sync Emails
+router.post('/send', protect, sendMailFromMailbox); // Send Emails
 
 export default router;

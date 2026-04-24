@@ -1,57 +1,109 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface IEmailRecipient {
+  name?: string;
+  address: string;
+}
+
 export interface IEmail extends Document {
-  senderMail: string;
-  receiverMail: string;
-  cc: string[];
+  graphId: string;
+  sender: IEmailRecipient;
+  from: IEmailRecipient;
+  toRecipients: IEmailRecipient[];
+  ccRecipients: IEmailRecipient[];
+  bccRecipients: IEmailRecipient[];
   subject: string;
-  body: string;
+  bodyPreview: string;
+  body: {
+    contentType: string;
+    content: string;
+  };
+  receivedDateTime: Date;
+  sentDateTime: Date;
+  hasAttachments: boolean;
+  isRead: boolean;
+  isDraft: boolean;
+  webLink: string;
+  conversationId: string;
+  importance: string;
+  crmUser: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const EmailSchema: Schema = new Schema({
-  senderMail: {
-    type: String,
-    required: true,
-    trim: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+const RecipientSchema = new Schema({
+  name: { type: String, trim: true },
+  address: { type: String, required: true, trim: true, lowercase: true }
+}, { _id: false });
+
+const EmailSchema = new Schema<IEmail>(
+  {
+    graphId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true
+    },
+    sender: RecipientSchema,
+    from: RecipientSchema,
+    toRecipients: [RecipientSchema],
+    ccRecipients: [RecipientSchema],
+    bccRecipients: [RecipientSchema],
+    subject: {
+      type: String,
+      trim: true
+    },
+    bodyPreview: {
+      type: String
+    },
+    body: {
+      contentType: { type: String },
+      content: { type: String }
+    },
+    receivedDateTime: {
+      type: Date
+    },
+    sentDateTime: {
+      type: Date
+    },
+    hasAttachments: {
+      type: Boolean,
+      default: false
+    },
+    isRead: {
+      type: Boolean,
+      default: false
+    },
+    isDraft: {
+      type: Boolean,
+      default: false
+    },
+    webLink: {
+      type: String
+    },
+    conversationId: {
+      type: String
+    },
+    importance: {
+      type: String,
+      enum: ['low', 'normal', 'high'],
+      default: 'normal'
+    },
+    crmUser: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    }
   },
-  receiverMail: {
-    type: String,
-    required: true,
-    trim: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
-  },
-  cc: [{
-    type: String,
-    trim: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
-  }],
-  subject: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  body: {
-    type: String,
-    required: true
-  },
-}, {
-  timestamps: true
-});
+  {
+    timestamps: true
+  }
+);
+
+// Index for faster searches
+EmailSchema.index({ crmUser: 1, receivedDateTime: -1 });
+EmailSchema.index({ subject: 'text', bodyPreview: 'text' });
 
 const Email = mongoose.model<IEmail>('Email', EmailSchema);
-
-export const saveEmails = async (emailData: any | any[]) => {
-  try {
-    return await Email.create(emailData);
-  } catch (error) {
-    throw error;
-  }
-};
 
 export default Email;
