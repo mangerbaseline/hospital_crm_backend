@@ -92,7 +92,7 @@ export const getMailboxMessages = async (req: AuthRequest, res: Response): Promi
 
 export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { toEmail, subject, content } = req.body;
+        const { toEmail, subject, content, ccEmails } = req.body;
         const fromEmail = req.user?.email;
 
         if (!fromEmail || !toEmail || !subject || !content) {
@@ -103,8 +103,17 @@ export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Prom
         // 1. Get Application Token
         const accessToken = await getAppOnlyToken();
 
-        // 2. Prepare the Email Payload
-        const mailPayload = {
+        // 2. Prepare the CC Recipients if provided
+        let ccRecipients: any[] = [];
+        if (ccEmails) {
+            const ccList = Array.isArray(ccEmails) ? ccEmails : ccEmails.split(',').map((e: string) => e.trim());
+            ccRecipients = ccList.filter((e: string) => e).map((email: string) => ({
+                emailAddress: { address: email }
+            }));
+        }
+
+        // 3. Prepare the Email Payload
+        const mailPayload: any = {
             message: {
                 subject: subject,
                 body: {
@@ -118,6 +127,7 @@ export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Prom
                         },
                     },
                 ],
+                ccRecipients: ccRecipients
             },
             saveToSentItems: 'true',
         };
@@ -146,83 +156,6 @@ export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Prom
 
     } catch (error: any) {
         console.error('App-Only Send Mail Error:', error);
-        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
-    }
-};
-
-
-export const syncMailboxMessages = async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-        if (!req.user || !req.user.email) {
-            res.status(401).json({ success: false, message: 'User not authenticated or email missing' });
-            return;
-        }
-
-        const email = req.user.email;
-
-        // 1. Get Application Token
-        const accessToken = await getAppOnlyToken();
-
-        // 2. Call Graph API for messages
-        // Limiting to top 50 for now
-        const graphResponse = await fetch(`https://graph.microsoft.com/v1.0/users/${email}/messages?$top=50`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-
-        const data = await graphResponse.json();
-
-        if (!graphResponse.ok) {
-            res.status(graphResponse.status).json({
-                success: false,
-                message: 'Failed to fetch messages from Microsoft Graph',
-                error: data
-            });
-            return;
-        }
-
-        const messages = data.value || [];
-        const syncResults = [];
-
-        // 3. Map and Upsert into MongoDB
-        for (const msg of messages) {
-            const emailDoc = {
-                graphId: msg.id,
-                sender: msg.sender?.emailAddress,
-                from: msg.from?.emailAddress,
-                toRecipients: msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                ccRecipients: msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                bccRecipients: msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-                subject: msg.subject,
-                bodyPreview: msg.bodyPreview,
-                body: msg.body,
-                receivedDateTime: msg.receivedDateTime,
-                sentDateTime: msg.sentDateTime,
-                hasAttachments: msg.hasAttachments,
-                isRead: msg.isRead,
-                isDraft: msg.isDraft,
-                webLink: msg.webLink,
-                conversationId: msg.conversationId,
-                importance: msg.importance,
-                crmUser: req.user._id
-            };
-
-            // Use findOneAndUpdate with upsert:true to avoid duplicates
-            const result = await Email.findOneAndUpdate(
-                { graphId: msg.id },
-                emailDoc,
-                { upsert: true, returnDocument: 'after' }
-            );
-            syncResults.push(result);
-        }
-
-        res.status(200).json({
-            success: true,
-            message: `Successfully synced ${syncResults.length} messages for ${email}`,
-            count: syncResults.length
-        });
-
-    } catch (error: any) {
-        console.error('Sync Mailbox Error:', error);
         res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
     }
 };
@@ -337,6 +270,198 @@ export const getReceivedEmailsFromDB = async (req: AuthRequest, res: Response): 
 
     } catch (error: any) {
         console.error('Fetch Received Emails Error:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
+    }
+};
+
+
+export const syncMailboxMessagesByDate = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        if (!req.user || !req.user.email) {
+            res.status(401).json({ success: false, message: 'User not authenticated or email missing' });
+            return;
+        }
+
+        const email = req.user.email;
+
+        // 1. Get Application Token
+        const accessToken = await getAppOnlyToken();
+
+        // 2. Find the latest email date in our DB to perform an incremental sync
+        const lastEmail = await Email.findOne({ crmUser: req.user._id }).sort({ receivedDateTime: -1 });
+
+        let filter = '';
+        if (lastEmail && lastEmail.receivedDateTime) {
+            const lastDate = lastEmail.receivedDateTime.toISOString();
+            // Filter for emails received AFTER or AT the last sync time
+            filter = `&$filter=receivedDateTime ge ${lastDate}`;
+        }
+
+        // 3. Call Graph API for messages (Incremental Sync)
+        const graphUrl = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=200&$orderby=receivedDateTime desc${filter}`;
+
+        const graphResponse = await fetch(graphUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        const data = await graphResponse.json();
+
+        if (!graphResponse.ok) {
+            res.status(graphResponse.status).json({
+                success: false,
+                message: 'Failed to fetch messages from Microsoft Graph',
+                error: data
+            });
+            return;
+        }
+
+        const messages = data.value || [];
+
+        if (messages.length === 0) {
+            res.status(200).json({
+                success: true,
+                message: `No new messages found for ${email} (Incremental)`,
+                count: 0
+            });
+            return;
+        }
+
+        // 4. Prepare Bulk Operations to avoid duplicates using graphId
+        const ops = messages.map((msg: any) => ({
+            updateOne: {
+                filter: { graphId: msg.id },
+                update: {
+                    $set: {
+                        graphId: msg.id,
+                        sender: msg.sender?.emailAddress,
+                        from: msg.from?.emailAddress,
+                        toRecipients: msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                        ccRecipients: msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                        bccRecipients: msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                        subject: msg.subject,
+                        bodyPreview: msg.bodyPreview,
+                        body: msg.body,
+                        receivedDateTime: msg.receivedDateTime,
+                        sentDateTime: msg.sentDateTime,
+                        hasAttachments: msg.hasAttachments,
+                        isRead: msg.isRead,
+                        isDraft: msg.isDraft,
+                        webLink: msg.webLink,
+                        conversationId: msg.conversationId,
+                        importance: msg.importance,
+                        crmUser: req.user?._id
+                    }
+                },
+                upsert: true
+            }
+        }));
+
+        // 5. Execute Bulk Write
+        const result = await Email.bulkWrite(ops);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully synced messages for ${email} (Incremental)`,
+            stats: {
+                totalSynced: messages.length,
+                newlyAdded: result.upsertedCount,
+                updated: result.modifiedCount
+            }
+        });
+
+    } catch (error: any) {
+        console.error('Incremental Sync Mailbox Error:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
+    }
+};
+
+
+
+export const syncMailboxMessages = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        if (!req.user || !req.user.email) {
+            res.status(401).json({ success: false, message: 'User not authenticated or email missing' });
+            return;
+        }
+
+        const email = req.user.email;
+
+        // 1. Get Application Token
+        const accessToken = await getAppOnlyToken();
+
+        // 2. Call Graph API for messages
+        // Limiting to top 50 for now
+        const graphResponse = await fetch(`https://graph.microsoft.com/v1.0/users/${email}/messages?$top=200`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        const data = await graphResponse.json();
+
+        if (!graphResponse.ok) {
+            res.status(graphResponse.status).json({
+                success: false,
+                message: 'Failed to fetch messages from Microsoft Graph',
+                error: data
+            });
+            return;
+        }
+
+        const messages = data.value || [];
+
+        if (messages.length === 0) {
+            res.status(200).json({
+                success: true,
+                message: `No new messages found for ${email}`,
+                count: 0
+            });
+            return;
+        }
+
+        // 3. Prepare Bulk Operations to avoid duplicates using graphId
+        const ops = messages.map((msg: any) => ({
+            updateOne: {
+                filter: { graphId: msg.id },
+                update: {
+                    $set: {
+                        graphId: msg.id,
+                        sender: msg.sender?.emailAddress,
+                        from: msg.from?.emailAddress,
+                        toRecipients: msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                        ccRecipients: msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                        bccRecipients: msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                        subject: msg.subject,
+                        bodyPreview: msg.bodyPreview,
+                        body: msg.body,
+                        receivedDateTime: msg.receivedDateTime,
+                        sentDateTime: msg.sentDateTime,
+                        hasAttachments: msg.hasAttachments,
+                        isRead: msg.isRead,
+                        isDraft: msg.isDraft,
+                        webLink: msg.webLink,
+                        conversationId: msg.conversationId,
+                        importance: msg.importance,
+                        crmUser: req.user?._id
+                    }
+                },
+                upsert: true
+            }
+        }));
+
+        // 4. Execute Bulk Write
+        const result = await Email.bulkWrite(ops);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully synced messages for ${email}`,
+            stats: {
+                totalSynced: messages.length,
+                newlyAdded: result.upsertedCount,
+                updated: result.modifiedCount
+            }
+        });
+
+    } catch (error: any) {
+        console.error('Sync Mailbox Error:', error);
         res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
     }
 };
