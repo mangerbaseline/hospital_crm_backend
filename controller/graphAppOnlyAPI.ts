@@ -214,6 +214,26 @@ export const getSentEmailsFromDB = async (req: AuthRequest, res: Response): Prom
 };
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const getReceivedEmailsFromDB = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         if (!req.user) {
@@ -462,6 +482,53 @@ export const syncMailboxMessages = async (req: AuthRequest, res: Response): Prom
 
     } catch (error: any) {
         console.error('Sync Mailbox Error:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
+    }
+};
+
+export const replyToMessage = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { messageId, comment } = req.body;
+        const fromEmail = req.user?.email;
+
+        if (!fromEmail || !messageId || !comment) {
+            res.status(400).json({ success: false, message: 'Missing required fields (messageId, comment) or user email' });
+            return;
+        }
+
+        // 1. Get Application Token
+        const accessToken = await getAppOnlyToken();
+
+        // 2. Prepare the Payload
+        const payload = {
+            comment: comment
+        };
+
+        // 3. Call Graph API to reply
+        const graphResponse = await fetch(`https://graph.microsoft.com/v1.0/users/${fromEmail}/messages/${messageId}/reply`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!graphResponse.ok) {
+            const errorData = await graphResponse.json();
+            res.status(graphResponse.status).json({
+                success: false,
+                message: 'Failed to reply to email',
+                error: errorData
+            });
+            return;
+        }
+
+        // Microsoft Graph reply action returns 202 Accepted on success with no body
+        res.status(200).json({ success: true, message: `Reply sent successfully from ${fromEmail}` });
+
+    } catch (error: any) {
+        console.error('App-Only Reply Mail Error:', error);
         res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
     }
 };
