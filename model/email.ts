@@ -26,6 +26,13 @@ export interface IEmail extends Document {
   webLink: string;
   conversationId: string;
   importance: string;
+  attachments?: {
+    name: string;
+    contentType: string;
+    contentId: string;
+    contentBytes: string;
+    isInline: boolean;
+  }[];
   crmUser: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -93,7 +100,14 @@ const EmailSchema = new Schema<IEmail>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true
-    }
+    },
+    attachments: [{
+      name: { type: String },
+      contentType: { type: String },
+      contentId: { type: String },
+      contentBytes: { type: String },
+      isInline: { type: Boolean, default: false }
+    }]
   },
   {
     timestamps: true

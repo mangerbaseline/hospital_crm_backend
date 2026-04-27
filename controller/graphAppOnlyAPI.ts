@@ -50,6 +50,9 @@ const getAppOnlyToken = async () => {
 
 
 const processMessageAttachments = async (accessToken: string, userId: string, message: any) => {
+    // Initialize attachments array for the message object
+    message.attachments = [];
+    
     if (!message.hasAttachments) return;
 
     try {
@@ -64,33 +67,45 @@ const processMessageAttachments = async (accessToken: string, userId: string, me
 
         let bodyContent = message.body?.content || "";
         let replacedCount = 0;
+        const storedAttachments: any[] = [];
 
         attachments.forEach((attachment: any) => {
-            // Some images might not be strictly marked as isInline but have a contentId
+            // Store all attachments in the message object for DB persistence
+            if (attachment.contentBytes) {
+                storedAttachments.push({
+                    name: attachment.name || 'attachment',
+                    contentType: attachment.contentType || 'application/octet-stream',
+                    contentId: attachment.contentId || '',
+                    contentBytes: attachment.contentBytes,
+                    isInline: attachment.isInline || !!attachment.contentId
+                });
+            }
+
+            // Handle inline replacement
             if (attachment.contentId && attachment.contentBytes) {
                 const cid = attachment.contentId;
                 const base64Data = `data:${attachment.contentType || 'image/png'};base64,${attachment.contentBytes}`;
 
-                // Replace both cid:ID and cid:<ID>
-                const patterns = [
-                    `cid:${cid}`,
-                    `cid:<${cid}>`
-                ];
+                // Improved Regex: match cid:ID, cid:<ID>, and handle potential extensions in HTML (e.g. cid:ID.png)
+                // Escape CID for regex
+                const escapedCid = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`cid:<?${escapedCid}(?:\\.[a-zA-Z0-9]+)?>?`, 'g');
 
-                patterns.forEach(pattern => {
-                    const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(escapedPattern, 'g');
-                    if (regex.test(bodyContent)) {
-                        bodyContent = bodyContent.replace(regex, base64Data);
-                        replacedCount++;
-                    }
-                });
+                if (regex.test(bodyContent)) {
+                    bodyContent = bodyContent.replace(regex, base64Data);
+                    replacedCount++;
+                }
             }
         });
 
-        if (replacedCount > 0 && message.body) {
-            console.log(`Successfully replaced ${replacedCount} inline images for message: ${message.subject}`);
+        // Update message object with processed content and attachments
+        if (message.body) {
             message.body.content = bodyContent;
+        }
+        message.attachments = storedAttachments;
+
+        if (replacedCount > 0) {
+            console.log(`Successfully replaced ${replacedCount} inline images for message: ${message.subject}`);
         }
     } catch (error) {
         console.error(`Error processing attachments for message ${message.id}:`, error);
@@ -126,10 +141,15 @@ export const getMailboxMessages = async (req: AuthRequest, res: Response): Promi
             return;
         }
 
+        const messages = data.value || [];
+        
+        // 3. Process Inline Attachments (CIDs) for UI display
+        await Promise.all(messages.map((msg: any) => processMessageAttachments(accessToken, email, msg)));
+
         res.status(200).json({
             success: true,
             mailbox: email,
-            data: data.value
+            data: messages
         });
 
     } catch (error: any) {
@@ -161,7 +181,58 @@ export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Prom
             }));
         }
 
-        // 3. Prepare the Email Payload
+        // 3. Handle Inline Attachments (CIDs)
+        const attachments: any[] = [];
+        const cidRegex = /cid:<?([a-zA-Z0-9.\-_@]+)>?/g;
+        let match;
+        const foundCids = new Set<string>();
+
+        while ((match = cidRegex.exec(content)) !== null) {
+            if (match[1]) {
+                foundCids.add(match[1]);
+            }
+        }
+
+        if (foundCids.size > 0) {
+            console.log(`Found ${foundCids.size} CIDs in email content. Searching for bytes...`);
+            
+            // Optimize: Search for all CIDs at once
+            const cidList = Array.from(foundCids);
+            const cidPrefixes = cidList.map(c => c.split('.')[0]);
+            
+            const emailsWithAttachments = await Email.find({
+                $or: [
+                    { 'attachments.contentId': { $in: cidList } },
+                    { 'attachments.contentId': { $in: cidPrefixes } }
+                ]
+            }).select('attachments');
+
+            for (const cid of foundCids) {
+                const cidPrefix = cid.split('.')[0];
+                let foundAttachment = null;
+
+                for (const emailDoc of emailsWithAttachments) {
+                    if (emailDoc.attachments) {
+                        foundAttachment = emailDoc.attachments.find(a => a.contentId === cid || a.contentId === cidPrefix);
+                        if (foundAttachment) break;
+                    }
+                }
+
+                if (foundAttachment) {
+                    attachments.push({
+                        '@odata.type': '#microsoft.graph.fileAttachment',
+                        name: foundAttachment.name,
+                        contentType: foundAttachment.contentType,
+                        contentBytes: foundAttachment.contentBytes,
+                        contentId: cid, // Use the CID as found in the HTML
+                        isInline: true
+                    });
+                    console.log(`Attached inline image for CID: ${cid}`);
+                }
+            }
+        }
+
+        // 4. Prepare the Email Payload
         const mailPayload: any = {
             message: {
                 subject: subject,
@@ -176,12 +247,13 @@ export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Prom
                         },
                     },
                 ],
-                ccRecipients: ccRecipients
+                ccRecipients: ccRecipients,
+                attachments: attachments
             },
             saveToSentItems: 'true',
         };
 
-        // 3. Call Graph API to send the mail
+        // 5. Call Graph API to send the mail
         const graphResponse = await fetch(`https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`, {
             method: 'POST',
             headers: {
@@ -421,6 +493,7 @@ export const syncMailboxMessagesByDate = async (req: AuthRequest, res: Response)
                         webLink: msg.webLink,
                         conversationId: msg.conversationId,
                         importance: msg.importance,
+                        attachments: msg.attachments,
                         crmUser: req.user?._id
                     }
                 },
@@ -515,6 +588,7 @@ export const syncMailboxMessages = async (req: AuthRequest, res: Response): Prom
                         webLink: msg.webLink,
                         conversationId: msg.conversationId,
                         importance: msg.importance,
+                        attachments: msg.attachments,
                         crmUser: req.user?._id
                     }
                 },
