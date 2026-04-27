@@ -49,6 +49,42 @@ const getAppOnlyToken = async () => {
 };
 
 
+const processMessageAttachments = async (accessToken: string, userId: string, message: any) => {
+    if (!message.hasAttachments) return;
+
+    try {
+        const response = await fetch(`https://graph.microsoft.com/v1.0/users/${userId}/messages/${message.id}/attachments`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const attachments = data.value || [];
+
+        let bodyContent = message.body?.content || "";
+
+        attachments.forEach((attachment: any) => {
+            if (attachment.isInline && attachment.contentId && attachment.contentBytes) {
+                const cid = `cid:${attachment.contentId}`;
+                const base64Data = `data:${attachment.contentType};base64,${attachment.contentBytes}`;
+
+                // Escape CID for regex
+                const escapedCid = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(escapCid, 'g');
+                bodyContent = bodyContent.replace(regex, base64Data);
+            }
+        });
+
+        if (message.body) {
+            message.body.content = bodyContent;
+        }
+    } catch (error) {
+        console.error(`Error processing attachments for message ${message.id}:`, error);
+    }
+};
+
+
 export const getMailboxMessages = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         if (!req.user || !req.user.email) {
@@ -346,7 +382,10 @@ export const syncMailboxMessagesByDate = async (req: AuthRequest, res: Response)
             return;
         }
 
-        // 4. Prepare Bulk Operations to avoid duplicates using graphId
+        // 4. Process Inline Attachments (CIDs)
+        await Promise.all(messages.map((msg: any) => processMessageAttachments(accessToken, email, msg)));
+
+        // 5. Prepare Bulk Operations to avoid duplicates using graphId
         const ops = messages.map((msg: any) => ({
             updateOne: {
                 filter: { graphId: msg.id },
@@ -437,7 +476,10 @@ export const syncMailboxMessages = async (req: AuthRequest, res: Response): Prom
             return;
         }
 
-        // 3. Prepare Bulk Operations to avoid duplicates using graphId
+        // 3. Process Inline Attachments (CIDs)
+        await Promise.all(messages.map((msg: any) => processMessageAttachments(accessToken, email, msg)));
+
+        // 4. Prepare Bulk Operations to avoid duplicates using graphId
         const ops = messages.map((msg: any) => ({
             updateOne: {
                 filter: { graphId: msg.id },
