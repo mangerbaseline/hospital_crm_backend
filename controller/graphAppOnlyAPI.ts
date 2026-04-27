@@ -63,20 +63,33 @@ const processMessageAttachments = async (accessToken: string, userId: string, me
         const attachments = data.value || [];
 
         let bodyContent = message.body?.content || "";
+        let replacedCount = 0;
 
         attachments.forEach((attachment: any) => {
-            if (attachment.isInline && attachment.contentId && attachment.contentBytes) {
-                const cid = `cid:${attachment.contentId}`;
-                const base64Data = `data:${attachment.contentType};base64,${attachment.contentBytes}`;
+            // Some images might not be strictly marked as isInline but have a contentId
+            if (attachment.contentId && attachment.contentBytes) {
+                const cid = attachment.contentId;
+                const base64Data = `data:${attachment.contentType || 'image/png'};base64,${attachment.contentBytes}`;
 
-                // Escape CID for regex
-                const escapedCid = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp(escapCid, 'g');
-                bodyContent = bodyContent.replace(regex, base64Data);
+                // Replace both cid:ID and cid:<ID>
+                const patterns = [
+                    `cid:${cid}`,
+                    `cid:<${cid}>`
+                ];
+
+                patterns.forEach(pattern => {
+                    const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(escapedPattern, 'g');
+                    if (regex.test(bodyContent)) {
+                        bodyContent = bodyContent.replace(regex, base64Data);
+                        replacedCount++;
+                    }
+                });
             }
         });
 
-        if (message.body) {
+        if (replacedCount > 0 && message.body) {
+            console.log(`Successfully replaced ${replacedCount} inline images for message: ${message.subject}`);
             message.body.content = bodyContent;
         }
     } catch (error) {
