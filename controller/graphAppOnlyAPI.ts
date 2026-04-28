@@ -456,9 +456,9 @@ export const getSentEmailsFromDB = async (
             },
           },
           // Search criteria: check if ANY message in the thread matches the search
-          searchMatch: search
-            ? {
-                $max: {
+          searchMatch: {
+            $max: search
+              ? {
                   $or: [
                     {
                       $regexMatch: {
@@ -482,9 +482,9 @@ export const getSentEmailsFromDB = async (
                       },
                     },
                   ],
-                },
-              }
-            : true,
+                }
+              : true,
+          },
         },
       },
       // Filter: Must have at least one sent message and match search
@@ -568,9 +568,9 @@ export const getReceivedEmailsFromDB = async (
             },
           },
           // Search criteria: check if ANY message in the thread matches the search
-          searchMatch: search
-            ? {
-                $max: {
+          searchMatch: {
+            $max: search
+              ? {
                   $or: [
                     {
                       $regexMatch: {
@@ -594,9 +594,9 @@ export const getReceivedEmailsFromDB = async (
                       },
                     },
                   ],
-                },
-              }
-            : true,
+                }
+              : true,
+          },
         },
       },
       // Filter: Must have at least one received message and match search
