@@ -32,9 +32,7 @@ const getMsalConfig = () => {
 };
 
 
-const getMsalClient = () => {
-    return new msal.ConfidentialClientApplication(getMsalConfig());
-};
+const getMsalClient = () => { return new msal.ConfidentialClientApplication(getMsalConfig()); };
 
 
 const getAppOnlyToken = async () => {
@@ -52,7 +50,7 @@ const getAppOnlyToken = async () => {
 const processMessageAttachments = async (accessToken: string, userId: string, message: any) => {
     // Initialize attachments array for the message object
     message.attachments = [];
-    
+
     if (!message.hasAttachments) return;
 
     try {
@@ -113,7 +111,7 @@ const processMessageAttachments = async (accessToken: string, userId: string, me
 };
 
 
-export const getMailboxMessages = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getMailboxMessages0 = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         if (!req.user || !req.user.email) {
             res.status(401).json({ success: false, message: 'User not authenticated or email missing' });
@@ -142,7 +140,7 @@ export const getMailboxMessages = async (req: AuthRequest, res: Response): Promi
         }
 
         const messages = data.value || [];
-        
+
         // 3. Process Inline Attachments (CIDs) for UI display
         await Promise.all(messages.map((msg: any) => processMessageAttachments(accessToken, email, msg)));
 
@@ -155,6 +153,58 @@ export const getMailboxMessages = async (req: AuthRequest, res: Response): Promi
     } catch (error: any) {
         console.error('App-Only Graph Error:', error);
         res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
+    }
+};
+
+export const getMailboxMessages = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { email } = req.params;
+
+        if (!email) {
+            res.status(400).json({ success: false, message: 'Email is required in params' });
+            return;
+        }
+
+        // 1. Get App Token
+        const accessToken = await getAppOnlyToken();
+
+        // 2. Call Graph API
+        const graphResponse = await fetch(
+            `https://graph.microsoft.com/v1.0/users/${email}/messages`,
+            {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            }
+        );
+
+        const data = await graphResponse.json();
+
+        if (!graphResponse.ok) {
+            res.status(graphResponse.status).json({
+                success: false,
+                message: 'Failed to fetch messages',
+                error: data
+            });
+            return;
+        }
+
+        const messages = data.value || [];
+
+
+
+        res.status(200).json({
+            success: true,
+            mailbox: email,
+            count: messages.length,
+            data: messages
+        });
+
+    } catch (error: any) {
+        console.error('Graph Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal Server Error',
+            error: error.message
+        });
     }
 };
 
@@ -195,11 +245,11 @@ export const sendMailFromMailbox = async (req: AuthRequest, res: Response): Prom
 
         if (foundCids.size > 0) {
             console.log(`Found ${foundCids.size} CIDs in email content. Searching for bytes...`);
-            
+
             // Optimize: Search for all CIDs at once
             const cidList = Array.from(foundCids);
             const cidPrefixes = cidList.map(c => c.split('.')[0]);
-            
+
             const emailsWithAttachments = await Email.find({
                 $or: [
                     { 'attachments.contentId': { $in: cidList } },
@@ -309,13 +359,32 @@ export const getSentEmailsFromDB = async (req: AuthRequest, res: Response): Prom
             ];
         }
 
-        // 2. Fetch paginated sent emails
-        const emails = await Email.find(query)
-            .sort({ receivedDateTime: -1 })
-            .skip(skip)
-            .limit(limit);
+        // 2. Fetch paginated sent emails grouped by conversation
+        const pipeline: any[] = [
+            { $match: query },
+            { $sort: { receivedDateTime: -1 } },
+            {
+                $group: {
+                    _id: { $ifNull: ['$conversationId', '$_id'] },
+                    doc: { $first: '$$ROOT' }
+                }
+            },
+            { $replaceRoot: { newRoot: '$doc' } },
+            { $sort: { receivedDateTime: -1 } },
+            { $skip: skip },
+            { $limit: limit }
+        ];
 
-        const totalEmails = await Email.countDocuments(query);
+        const emails = await Email.aggregate(pipeline);
+
+        const countPipeline: any[] = [
+            { $match: query },
+            { $group: { _id: { $ifNull: ['$conversationId', '$_id'] } } },
+            { $count: 'total' }
+        ];
+
+        const countResult = await Email.aggregate(countPipeline);
+        const totalEmails = countResult.length > 0 ? countResult[0].total : 0;
 
         res.status(200).json({
             success: true,
@@ -333,25 +402,6 @@ export const getSentEmailsFromDB = async (req: AuthRequest, res: Response): Prom
         res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
     }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -390,13 +440,32 @@ export const getReceivedEmailsFromDB = async (req: AuthRequest, res: Response): 
             delete query['from.address'];
         }
 
-        // 2. Fetch paginated received emails
-        const emails = await Email.find(query)
-            .sort({ receivedDateTime: -1 })
-            .skip(skip)
-            .limit(limit);
+        // 2. Fetch paginated received emails grouped by conversation
+        const pipeline: any[] = [
+            { $match: query },
+            { $sort: { receivedDateTime: -1 } },
+            {
+                $group: {
+                    _id: { $ifNull: ['$conversationId', '$_id'] },
+                    doc: { $first: '$$ROOT' }
+                }
+            },
+            { $replaceRoot: { newRoot: '$doc' } },
+            { $sort: { receivedDateTime: -1 } },
+            { $skip: skip },
+            { $limit: limit }
+        ];
 
-        const totalEmails = await Email.countDocuments(query);
+        const emails = await Email.aggregate(pipeline);
+
+        const countPipeline: any[] = [
+            { $match: query },
+            { $group: { _id: { $ifNull: ['$conversationId', '$_id'] } } },
+            { $count: 'total' }
+        ];
+
+        const countResult = await Email.aggregate(countPipeline);
+        const totalEmails = countResult.length > 0 ? countResult[0].total : 0;
 
         res.status(200).json({
             success: true,

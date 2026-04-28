@@ -4,7 +4,7 @@ import { protect } from '../middleware/authMiddleware.ts';
 
 const router = express.Router();
 
-router.get('/messages', protect, getMailboxMessages); // get email messages from graph API outllok Azure
+router.get('/messages/:email', protect, getMailboxMessages); // get email messages from graph API outllok Azure
 
 router.get('/sent-emails', protect, getSentEmailsFromDB); // Get Sent Emails from DB
 router.get('/received-emails', protect, getReceivedEmailsFromDB); // Get Received Emails from DB
