@@ -38,6 +38,11 @@ const getMsalClient = () => {
   return new msal.ConfidentialClientApplication(getMsalConfig());
 };
 
+const normalizeSubject = (subject: string): string => {
+  if (!subject) return "";
+  return subject.replace(/^(re|fw|fwd|aw|reply|forward):\s*/i, "").trim();
+};
+
 const getAppOnlyToken = async () => {
   const client = getMsalClient();
   const tokenRequest = {
@@ -433,25 +438,11 @@ export const getSentEmailsFromDB = async (
     // 2. Define the common aggregation stages for threading and filtering
     const threadingStages: any[] = [
       { $match: baseMatch },
-      // Normalize subject to group "RE: Subject" with "Subject"
       {
         $addFields: {
-          normalizedSubject: {
-            $trim: {
-              input: {
-                $regexReplace: {
-                  input: { $ifNull: ["$subject", ""] },
-                  find: "^(?i)(re|fw|fwd|aw|reply|forward):\\s*",
-                  replacement: "",
-                },
-              },
-            },
+          threadId: {
+            $ifNull: ["$conversationId", "$normalizedSubject", "$subject"],
           },
-        },
-      },
-      {
-        $addFields: {
-          threadId: { $ifNull: ["$conversationId", "$normalizedSubject"] },
         },
       },
       { $sort: { receivedDateTime: -1 } },
@@ -559,25 +550,11 @@ export const getReceivedEmailsFromDB = async (
     // 2. Define the common aggregation stages for threading and filtering
     const threadingStages: any[] = [
       { $match: baseMatch },
-      // Normalize subject to group "RE: Subject" with "Subject"
       {
         $addFields: {
-          normalizedSubject: {
-            $trim: {
-              input: {
-                $regexReplace: {
-                  input: { $ifNull: ["$subject", ""] },
-                  find: "^(?i)(re|fw|fwd|aw|reply|forward):\\s*",
-                  replacement: "",
-                },
-              },
-            },
+          threadId: {
+            $ifNull: ["$conversationId", "$normalizedSubject", "$subject"],
           },
-        },
-      },
-      {
-        $addFields: {
-          threadId: { $ifNull: ["$conversationId", "$normalizedSubject"] },
         },
       },
       { $sort: { receivedDateTime: -1 } },
@@ -756,6 +733,7 @@ export const syncMailboxMessagesByDate = async (
             importance: msg.importance,
             attachments: msg.attachments,
             crmUser: req.user?._id,
+            normalizedSubject: normalizeSubject(msg.subject),
           },
         },
         upsert: true,

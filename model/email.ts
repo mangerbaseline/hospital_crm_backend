@@ -13,6 +13,7 @@ export interface IEmail extends Document {
   ccRecipients: IEmailRecipient[];
   bccRecipients: IEmailRecipient[];
   subject: string;
+  normalizedSubject: string;
   bodyPreview: string;
   body: {
     contentType: string;
@@ -60,6 +61,11 @@ const EmailSchema = new Schema<IEmail>(
     subject: {
       type: String,
       trim: true
+    },
+    normalizedSubject: {
+      type: String,
+      trim: true,
+      index: true
     },
     bodyPreview: {
       type: String
