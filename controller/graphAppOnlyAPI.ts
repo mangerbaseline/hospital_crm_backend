@@ -121,22 +121,26 @@ const processMessageAttachments = async (
       // Handle inline replacement (CID to URL)
       if (attachment.contentId && fileUrl) {
         const cid = attachment.contentId;
-        // Escape CID for regex
-        const escapedCid = cid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(
-          `cid:<?${escapedCid}(?:\\.[a-zA-Z0-9]+)?>?`,
-          "g",
-        );
+        // Strip brackets if they exist in the contentId from Graph
+        const cleanCid = cid.replace(/[<>]/g, "");
+        const escapedCid = cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        // Permissive regex to match cid:CID, cid:<CID>, and handle variations
+        const regex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
 
         if (regex.test(bodyContent)) {
+          console.log(`Matching CID found: ${cleanCid}, replacing with ${fileUrl}`);
           bodyContent = bodyContent.replace(regex, fileUrl);
           replacedCount++;
+        } else {
+          // Try matching just the CID without potentially problematic characters if first match fails
+          console.log(`CID ${cleanCid} not found in body content of message ${message.id}`);
         }
       }
     });
 
     // Update message object with processed content and attachments
-    if (message.body) {
+    if (message.body && bodyContent) {
       message.body.content = bodyContent;
     }
     message.attachments = storedAttachments;
