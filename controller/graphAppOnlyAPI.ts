@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import * as msal from "@azure/msal-node";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Email from "../model/email.ts";
+import fs from "fs";
+import path from "path";
 
 const getMsalConfig = () => {
   let privateKey = process.env.MS_GRAPH_PRIVATE_KEY;
@@ -74,24 +76,46 @@ const processMessageAttachments = async (
     let replacedCount = 0;
     const storedAttachments: any[] = [];
 
+    // Ensure uploads directory exists
+    const uploadDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
     attachments.forEach((attachment: any) => {
+      let fileUrl = "";
+
       // Store all attachments in the message object for DB persistence
       if (attachment.contentBytes) {
-        storedAttachments.push({
-          name: attachment.name || "attachment",
-          contentType: attachment.contentType || "application/octet-stream",
-          contentId: attachment.contentId || "",
-          contentBytes: attachment.contentBytes,
-          isInline: attachment.isInline || !!attachment.contentId,
-        });
+        try {
+          // Generate a safe filename
+          const safeFilename = `${message.id}-${attachment.id || Math.random().toString(36).substring(7)}`.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const extension = attachment.name ? path.extname(attachment.name) : "";
+          const filename = `${safeFilename}${extension}`;
+          const filePath = path.join(uploadDir, filename);
+
+          // Save file to disk
+          fs.writeFileSync(filePath, Buffer.from(attachment.contentBytes, "base64"));
+
+          // Set the public URL
+          fileUrl = `https://hospital-crm-backend-prp5.onrender.com/uploads/${filename}`;
+
+          storedAttachments.push({
+            name: attachment.name || "attachment",
+            contentType: attachment.contentType || "application/octet-stream",
+            contentId: attachment.contentId || "",
+            contentBytes: attachment.contentBytes.length > 1024 * 1024 ? "" : attachment.contentBytes, // Clear bytes if > 1MB to save DB space
+            fileUrl: fileUrl,
+            isInline: attachment.isInline || !!attachment.contentId,
+          });
+        } catch (fileError) {
+          console.error("Error saving attachment to disk:", fileError);
+        }
       }
 
-      // Handle inline replacement
-      if (attachment.contentId && attachment.contentBytes) {
+      // Handle inline replacement (CID to URL)
+      if (attachment.contentId && fileUrl) {
         const cid = attachment.contentId;
-        const base64Data = `data:${attachment.contentType || "image/png"};base64,${attachment.contentBytes}`;
-
-        // Improved Regex: match cid:ID, cid:<ID>, and handle potential extensions in HTML (e.g. cid:ID.png)
         // Escape CID for regex
         const escapedCid = cid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const regex = new RegExp(
@@ -100,7 +124,7 @@ const processMessageAttachments = async (
         );
 
         if (regex.test(bodyContent)) {
-          bodyContent = bodyContent.replace(regex, base64Data);
+          bodyContent = bodyContent.replace(regex, fileUrl);
           replacedCount++;
         }
       }

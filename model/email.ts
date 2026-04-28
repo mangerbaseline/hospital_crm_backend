@@ -31,6 +31,7 @@ export interface IEmail extends Document {
     contentType: string;
     contentId: string;
     contentBytes: string;
+    fileUrl?: string;
     isInline: boolean;
   }[];
   crmUser: mongoose.Types.ObjectId;
@@ -106,6 +107,7 @@ const EmailSchema = new Schema<IEmail>(
       contentType: { type: String },
       contentId: { type: String },
       contentBytes: { type: String },
+      fileUrl: { type: String },
       isInline: { type: Boolean, default: false }
     }]
   },
