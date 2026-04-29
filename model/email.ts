@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema } from "mongoose";
 
 export interface IEmailRecipient {
   name?: string;
@@ -40,10 +40,13 @@ export interface IEmail extends Document {
   updatedAt: Date;
 }
 
-const RecipientSchema = new Schema({
-  name: { type: String, trim: true },
-  address: { type: String, required: true, trim: true, lowercase: true }
-}, { _id: false });
+const RecipientSchema = new Schema(
+  {
+    name: { type: String, trim: true },
+    address: { type: String, required: true, trim: true, lowercase: true },
+  },
+  { _id: false },
+);
 
 const EmailSchema = new Schema<IEmail>(
   {
@@ -51,7 +54,7 @@ const EmailSchema = new Schema<IEmail>(
       type: String,
       required: true,
       unique: true,
-      index: true
+      index: true,
     },
     sender: RecipientSchema,
     from: RecipientSchema,
@@ -60,72 +63,74 @@ const EmailSchema = new Schema<IEmail>(
     bccRecipients: [RecipientSchema],
     subject: {
       type: String,
-      trim: true
+      trim: true,
     },
     normalizedSubject: {
       type: String,
       trim: true,
-      index: true
+      index: true,
     },
     bodyPreview: {
-      type: String
+      type: String,
     },
     body: {
       contentType: { type: String },
-      content: { type: String }
+      content: { type: String },
     },
     receivedDateTime: {
-      type: Date
+      type: Date,
     },
     sentDateTime: {
-      type: Date
+      type: Date,
     },
     hasAttachments: {
       type: Boolean,
-      default: false
+      default: false,
     },
     isRead: {
       type: Boolean,
-      default: false
+      default: false,
     },
     isDraft: {
       type: Boolean,
-      default: false
+      default: false,
     },
     webLink: {
-      type: String
+      type: String,
     },
     conversationId: {
-      type: String
+      type: String,
     },
     importance: {
       type: String,
-      enum: ['low', 'normal', 'high'],
-      default: 'normal'
+      enum: ["low", "normal", "high"],
+      default: "normal",
     },
     crmUser: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
+      ref: "User",
+      required: true,
     },
-    attachments: [{
-      name: { type: String },
-      contentType: { type: String },
-      contentId: { type: String },
-      contentBytes: { type: String },
-      fileUrl: { type: String },
-      isInline: { type: Boolean, default: false }
-    }]
+    attachments: [
+      {
+        name: { type: String },
+        contentType: { type: String },
+        contentId: { type: String },
+        contentBytes: { type: String },
+        fileUrl: { type: String },
+        isInline: { type: Boolean, default: false },
+      },
+    ],
   },
   {
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
 // Index for faster searches
 EmailSchema.index({ crmUser: 1, receivedDateTime: -1 });
-EmailSchema.index({ subject: 'text', bodyPreview: 'text' });
+EmailSchema.index({ subject: "text", bodyPreview: "text" });
 
-const Email = mongoose.model<IEmail>('Email', EmailSchema);
+const Email = mongoose.model<IEmail>("Email", EmailSchema);
 
 export default Email;

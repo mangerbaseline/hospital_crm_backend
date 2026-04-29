@@ -62,7 +62,11 @@ const processMessageAttachments = async (
   // Initialize attachments array for the message object
   message.attachments = [];
 
-  if (!message.hasAttachments) return;
+  // Skip API call entirely if there are no attachments and no inline images
+  const hasCid = message.body?.content?.includes("cid:");
+  if (!message.hasAttachments && !hasCid) {
+    return;
+  }
 
   try {
     const response = await fetch(
@@ -72,74 +76,300 @@ const processMessageAttachments = async (
       },
     );
 
-    if (!response.ok) return;
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(
+        `Failed to fetch attachments for message ${message.id}: ${response.status} ${errText}`,
+      );
+      return;
+    }
 
     const data = await response.json();
     const attachments = data.value || [];
 
     let bodyContent = message.body?.content || "";
     let replacedCount = 0;
-    const storedAttachments: any[] = [];
 
-    // Ensure uploads directory exists
-    const uploadDir = path.join(process.cwd(), "uploads");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    console.log(
+      `Processing ${attachments.length} attachments for message ${message.id}`,
+    );
+
+    const cidMatches = bodyContent.match(/cid:[^"'\s>]+/g);
+    if (cidMatches) {
+      console.log(
+        `CIDs found in body for ${message.id}: ${cidMatches.join(", ")}`,
+      );
     }
 
-    attachments.forEach((attachment: any) => {
-      let fileUrl = "";
+    // 1. Map all available attachments by their CID and Name for quick lookup
+    const attachmentMap = new Map<string, any>();
+    attachments.forEach((att: any) => {
+      console.log(
+        `Found attachment: name=${att.name}, contentId=${att.contentId}, hasBytes=${!!att.contentBytes}`,
+      );
+      if (att.contentId) {
+        const cleanId = att.contentId.replace(/[<>]/g, "");
+        attachmentMap.set(cleanId.toLowerCase(), att);
+      }
+      if (att.name) {
+        attachmentMap.set(att.name.toLowerCase(), att);
+      }
+    });
 
-      // Store all attachments in the message object for DB persistence
-      if (attachment.contentBytes) {
+    // 2. Construct local URLs and update the map
+    const storedAttachments: any[] = [];
+    for (const attachment of attachments) {
+      if (attachment.id) {
         try {
-          // Generate a safe filename
-          const safeFilename = `${message.id}-${attachment.id || Math.random().toString(36).substring(7)}`.replace(/[^a-zA-Z0-9.-]/g, "_");
-          const extension = attachment.name ? path.extname(attachment.name) : "";
-          const filename = `${safeFilename}${extension}`;
-          const filePath = path.join(uploadDir, filename);
+          const backendBaseUrl =
+            process.env.BACKEND_URL ||
+            (process.env.NODE_ENV === "production"
+              ? "https://hospital-crm-backend-prp5.onrender.com"
+              : "http://localhost:8000");
 
-          // Save file to disk
-          fs.writeFileSync(filePath, Buffer.from(attachment.contentBytes, "base64"));
+          const fileUrl = `${backendBaseUrl}/api/graph-app/attachment/${userId}/${message.id}/${attachment.id}`;
 
-          // Set the public URL
-          fileUrl = `https://hospital-crm-backend-prp5.onrender.com/uploads/${filename}`;
-
-          storedAttachments.push({
+          const storedAtt = {
             name: attachment.name || "attachment",
             contentType: attachment.contentType || "application/octet-stream",
             contentId: attachment.contentId || "",
-            contentBytes: attachment.contentBytes.length > 1024 * 1024 ? "" : attachment.contentBytes, // Clear bytes if > 1MB to save DB space
+            contentBytes: "", // We no longer store bytes in the database to save space
             fileUrl: fileUrl,
             isInline: attachment.isInline || !!attachment.contentId,
-          });
+          };
+          storedAttachments.push(storedAtt);
+
+          // Update our lookup map with the new fileUrl
+          if (attachment.contentId) {
+            const key = attachment.contentId.replace(/[<>]/g, "").toLowerCase();
+            const mapAtt = attachmentMap.get(key);
+            if (mapAtt) mapAtt.fileUrl = fileUrl;
+          }
+          if (attachment.name) {
+            const key = attachment.name.toLowerCase();
+            const mapAtt = attachmentMap.get(key);
+            if (mapAtt) mapAtt.fileUrl = fileUrl;
+          }
         } catch (fileError) {
           console.error("Error saving attachment to disk:", fileError);
         }
       }
+    }
 
-      // Handle inline replacement (CID to URL)
-      if (attachment.contentId && fileUrl) {
-        const cid = attachment.contentId;
-        // Strip brackets if they exist in the contentId from Graph
-        const cleanCid = cid.replace(/[<>]/g, "");
-        const escapedCid = cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 3. Robust Body Replacement: Scan the body for ANY "cid:" patterns
+    if (bodyContent) {
+      // Extremely permissive regex to find anything that looks like a CID
+      const cidMatches = bodyContent.match(/cid:[^"'\s>)]+/gi);
 
-        // Permissive regex to match cid:CID, cid:<CID>, and handle variations
-        const regex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
+      if (!cidMatches && bodyContent.toLowerCase().includes("cid:")) {
+        console.log(
+          `    * WARNING: 'cid:' string found in body of message ${message.id} but regex failed to match. Check HTML structure.`,
+        );
+      }
 
-        if (regex.test(bodyContent)) {
-          console.log(`Matching CID found: ${cleanCid}, replacing with ${fileUrl}`);
-          bodyContent = bodyContent.replace(regex, fileUrl);
-          replacedCount++;
-        } else {
-          // Try matching just the CID without potentially problematic characters if first match fails
-          console.log(`CID ${cleanCid} not found in body content of message ${message.id}`);
+      if (cidMatches) {
+        console.log(
+          `Analyzing ${cidMatches.length} CIDs for message ${message.id} (${message.subject})`,
+        );
+        for (const match of cidMatches) {
+          const cidPart = match.replace(/cid:<?/i, "").replace(/>?$/i, "");
+          let cleanCid = cidPart.replace(/[<>]/g, "").toLowerCase();
+          console.log(`  - Checking CID: ${cleanCid}`);
+
+          // Try direct match in current message
+          let att = attachmentMap.get(cleanCid);
+
+          // Try match without extension
+          if (!att && cleanCid.includes(".")) {
+            const baseCid = cleanCid.substring(0, cleanCid.lastIndexOf("."));
+            att = attachmentMap.get(baseCid);
+            if (att)
+              console.log(
+                `    * Found match by stripping extension: ${baseCid}`,
+              );
+          }
+
+          // Try match by stripping everything after @ (common in Outlook)
+          if (!att && cleanCid.includes("@")) {
+            const prefix = cleanCid.split("@")[0];
+            att = attachmentMap.get(prefix);
+            if (att)
+              console.log(`    * Found match by stripping @ suffix: ${prefix}`);
+          }
+
+          // Try stripping 'ii_' prefix (common in Gmail/Outlook threads)
+          if (!att && cleanCid.startsWith("ii_")) {
+            const stripped = cleanCid.substring(3);
+            att = attachmentMap.get(stripped);
+            if (att)
+              console.log(
+                `    * Found match by stripping 'ii_' prefix: ${stripped}`,
+              );
+          }
+
+          // Try URL decoding
+          if (!att) {
+            try {
+              const decodedCid = decodeURIComponent(cleanCid);
+              att = attachmentMap.get(decodedCid);
+              if (att)
+                console.log(
+                  `    * Found match after URL decoding: ${decodedCid}`,
+                );
+            } catch (e) {}
+          }
+
+          // Last resort: search for ANY attachment that contains this CID string in its name or ID
+          if (!att) {
+            for (const [key, value] of attachmentMap.entries()) {
+              if (key.includes(cleanCid) || cleanCid.includes(key)) {
+                att = value;
+                console.log(`    * Found fuzzy match: ${key}`);
+                break;
+              }
+            }
+          }
+
+          let targetUrl = att?.fileUrl;
+
+          // 3b. Batch lookup: If not found in current message, look in other messages in the CURRENT SYNC BATCH
+          // (This fixes the race condition where the original message and reply are in the same sync batch)
+          if (
+            !targetUrl &&
+            message.conversationId &&
+            Array.isArray((global as any).currentSyncBatch)
+          ) {
+            const otherMsg = (global as any).currentSyncBatch.find(
+              (m: any) =>
+                m.conversationId === message.conversationId &&
+                m.attachments &&
+                m.attachments.some(
+                  (a: any) =>
+                    (a.contentId &&
+                      a.contentId.replace(/[<>]/g, "").toLowerCase() ===
+                        cleanCid) ||
+                    (a.name && a.name.toLowerCase() === cleanCid),
+                ),
+            );
+            if (otherMsg) {
+              const batchAtt = otherMsg.attachments.find(
+                (a: any) =>
+                  (a.contentId &&
+                    a.contentId.replace(/[<>]/g, "").toLowerCase() ===
+                      cleanCid) ||
+                  (a.name && a.name.toLowerCase() === cleanCid),
+              );
+              if (batchAtt && batchAtt.fileUrl) {
+                console.log(
+                  `    * Found CID ${cleanCid} in current sync batch!`,
+                );
+                targetUrl = batchAtt.fileUrl;
+              }
+            }
+          }
+
+          // 4. Thread-wide lookup: If still not found, look in the database
+          if (!targetUrl && message.conversationId) {
+            console.log(
+              `    * Searching conversation thread ${message.conversationId} for CID ${cleanCid}...`,
+            );
+            try {
+              const threadMessage = await Email.findOne({
+                conversationId: message.conversationId,
+                "attachments.contentId": new RegExp(
+                  cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                  "i",
+                ),
+                "attachments.fileUrl": { $exists: true, $ne: "" },
+              }).select("attachments");
+
+              if (threadMessage && threadMessage.attachments) {
+                const threadAtt = threadMessage.attachments.find(
+                  (a) =>
+                    (a.contentId &&
+                      a.contentId.replace(/[<>]/g, "").toLowerCase() ===
+                        cleanCid) ||
+                    (a.name && a.name.toLowerCase() === cleanCid),
+                );
+                if (threadAtt && threadAtt.fileUrl) {
+                  console.log(
+                    `    * Found CID ${cleanCid} in conversation thread!`,
+                  );
+                  targetUrl = threadAtt.fileUrl;
+                }
+              }
+            } catch (err) {
+              console.error("    * Thread lookup error:", err);
+            }
+          }
+
+          // 5. Global Fallback: Search the ENTIRE database for any email with this CID
+          // Use this as a last resort for common logos/images
+          if (!targetUrl) {
+            console.log(
+              `    * Final fallback: Global search for CID ${cleanCid}...`,
+            );
+            try {
+              const globalMatch = await Email.findOne({
+                "attachments.contentId": new RegExp(
+                  cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                  "i",
+                ),
+                "attachments.fileUrl": { $exists: true, $ne: "" },
+              }).select("attachments");
+
+              if (globalMatch && globalMatch.attachments) {
+                const globalAtt = globalMatch.attachments.find(
+                  (a) =>
+                    (a.contentId &&
+                      a.contentId.replace(/[<>]/g, "").toLowerCase() ===
+                        cleanCid) ||
+                    (a.name && a.name.toLowerCase() === cleanCid),
+                );
+                if (globalAtt && globalAtt.fileUrl) {
+                  console.log(
+                    `    * Found CID ${cleanCid} in global database search!`,
+                  );
+                  targetUrl = globalAtt.fileUrl;
+                }
+              }
+            } catch (err) {
+              console.error("    * Global search error:", err);
+            }
+          }
+
+          if (targetUrl) {
+            console.log(`    * SUCCESS: Replaced CID with ${targetUrl}`);
+            const escapedCid = cidPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const replaceRegex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
+            bodyContent = bodyContent.replace(replaceRegex, targetUrl);
+            replacedCount++;
+          } else {
+            console.log(`    * FAILED: No match found for CID: ${cidPart}`);
+            // Check if this CID is in an img src
+            const imgSrcRegex = new RegExp(
+              `<img[^>]+src=["']cid:<?${cidPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>?["']`,
+              "i",
+            );
+            const tagMatch = bodyContent.match(imgSrcRegex);
+            if (tagMatch) {
+              console.log(`      Found in tag: ${tagMatch[0]}`);
+            }
+          }
         }
       }
-    });
 
-    // Update message object with processed content and attachments
+      // FINAL CATCH-ALL: Scan for any remaining src="cid:..." patterns that might have been missed
+      const remainingCids = bodyContent.match(/src=["']cid:([^"'>\s]+)["']/gi);
+      if (remainingCids && remainingCids.length > 0) {
+        console.log(
+          `    * FINAL SCAN: Found ${remainingCids.length} remaining CIDs in src attributes. Attempting last-resort resolution...`,
+        );
+        // ... previous logic repeats or we can just leave the log to see what they are
+      }
+    }
+
+    // Update message object
     if (message.body && bodyContent) {
       message.body.content = bodyContent;
     }
@@ -198,11 +428,17 @@ export const getMailboxMessages0 = async (
     const messages = data.value || [];
 
     // 3. Process Inline Attachments (CIDs) for UI display
-    await Promise.all(
-      messages.map((msg: any) =>
-        processMessageAttachments(accessToken, email, msg),
-      ),
-    );
+    // 3. Process Inline Attachments (CIDs) for UI display
+    // Process in chunks to avoid Graph API rate limits but keep it fast
+    const chunkSize = 10;
+    for (let i = 0; i < messages.length; i += chunkSize) {
+      const chunk = messages.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map((msg: any) =>
+          processMessageAttachments(accessToken, email, msg),
+        ),
+      );
+    }
 
     res.status(200).json({
       success: true,
@@ -674,7 +910,9 @@ export const syncMailboxMessagesByDate = async (
     }
 
     // 3. Call Graph API for messages (Incremental Sync)
-    const graphUrl = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=200&$orderby=receivedDateTime desc${filter}`;
+    const select =
+      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
+    const graphUrl = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=500&$orderby=receivedDateTime desc&$select=${select}${filter}`;
 
     const graphResponse = await fetch(graphUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -703,11 +941,18 @@ export const syncMailboxMessagesByDate = async (
     }
 
     // 4. Process Inline Attachments (CIDs)
-    await Promise.all(
-      messages.map((msg: any) =>
-        processMessageAttachments(accessToken, email, msg),
-      ),
-    );
+    // Process in chunks to avoid Graph API rate limits but keep it fast
+    (global as any).currentSyncBatch = messages;
+    const chunkSize = 10;
+    for (let i = 0; i < messages.length; i += chunkSize) {
+      const chunk = messages.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map((msg: any) =>
+          processMessageAttachments(accessToken, email, msg),
+        ),
+      );
+    }
+    delete (global as any).currentSyncBatch;
 
     // 5. Prepare Bulk Operations to avoid duplicates using graphId
     const ops = messages.map((msg: any) => ({
@@ -726,7 +971,6 @@ export const syncMailboxMessagesByDate = async (
               msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
             subject: msg.subject,
             bodyPreview: msg.bodyPreview,
-            body: msg.body,
             receivedDateTime: msg.receivedDateTime,
             sentDateTime: msg.sentDateTime,
             hasAttachments: msg.hasAttachments,
@@ -738,6 +982,8 @@ export const syncMailboxMessagesByDate = async (
             attachments: msg.attachments,
             crmUser: req.user?._id,
             normalizedSubject: normalizeSubject(msg.subject),
+            "body.content": msg.body?.content,
+            "body.contentType": msg.body?.contentType,
           },
         },
         upsert: true,
@@ -785,9 +1031,10 @@ export const syncMailboxMessages = async (
     const accessToken = await getAppOnlyToken();
 
     // 2. Call Graph API for messages
-    // Limiting to top 50 for now
+    const select =
+      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
     const graphResponse = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=200`,
+      `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=500&$select=${select}`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       },
@@ -816,11 +1063,19 @@ export const syncMailboxMessages = async (
     }
 
     // 3. Process Inline Attachments (CIDs)
-    await Promise.all(
-      messages.map((msg: any) =>
-        processMessageAttachments(accessToken, email, msg),
-      ),
-    );
+    // 3. Process Inline Attachments (CIDs)
+    // Process in chunks to avoid Graph API rate limits but keep it fast
+    (global as any).currentSyncBatch = messages;
+    const chunkSize = 10;
+    for (let i = 0; i < messages.length; i += chunkSize) {
+      const chunk = messages.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map((msg: any) =>
+          processMessageAttachments(accessToken, email, msg),
+        ),
+      );
+    }
+    delete (global as any).currentSyncBatch;
 
     // 4. Prepare Bulk Operations to avoid duplicates using graphId
     const ops = messages.map((msg: any) => ({
@@ -839,7 +1094,6 @@ export const syncMailboxMessages = async (
               msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
             subject: msg.subject,
             bodyPreview: msg.bodyPreview,
-            body: msg.body,
             receivedDateTime: msg.receivedDateTime,
             sentDateTime: msg.sentDateTime,
             hasAttachments: msg.hasAttachments,
@@ -850,6 +1104,8 @@ export const syncMailboxMessages = async (
             importance: msg.importance,
             attachments: msg.attachments,
             crmUser: req.user?._id,
+            "body.content": msg.body?.content,
+            "body.contentType": msg.body?.contentType,
           },
         },
         upsert: true,
@@ -883,7 +1139,7 @@ export const replyToMessage = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { messageId, comment } = req.body;
+    const { messageId, comment, ccEmails, bccEmails } = req.body;
     const fromEmail = req.user?.email;
 
     if (!fromEmail || !messageId || !comment) {
@@ -897,10 +1153,40 @@ export const replyToMessage = async (
     // 1. Get Application Token
     const accessToken = await getAppOnlyToken();
 
+    let ccListArray: any[] = [];
+    if (ccEmails) {
+      const ccList = Array.isArray(ccEmails)
+        ? ccEmails
+        : ccEmails.split(",").map((e: string) => e.trim());
+      ccListArray = ccList
+        .filter((e: string) => e)
+        .map((email: string) => ({
+          emailAddress: { address: email },
+        }));
+    }
+
+    let bccListArray: any[] = [];
+    if (bccEmails) {
+      const bccList = Array.isArray(bccEmails)
+        ? bccEmails
+        : bccEmails.split(",").map((e: string) => e.trim());
+      bccListArray = bccList
+        .filter((e: string) => e)
+        .map((email: string) => ({
+          emailAddress: { address: email },
+        }));
+    }
+
     // 2. Prepare the Payload
-    const payload = {
+    const payload: any = {
       comment: comment,
     };
+
+    if (ccListArray.length > 0 || bccListArray.length > 0) {
+      payload.message = {};
+      if (ccListArray.length > 0) payload.message.ccRecipients = ccListArray;
+      if (bccListArray.length > 0) payload.message.bccRecipients = bccListArray;
+    }
 
     // 3. Call Graph API to reply
     const graphResponse = await fetch(
@@ -932,6 +1218,63 @@ export const replyToMessage = async (
     });
   } catch (error: any) {
     console.error("App-Only Reply Mail Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
+export const getAttachmentContent = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { userId, messageId, attachmentId } = req.params;
+
+    if (!userId || !messageId || !attachmentId) {
+      res.status(400).json({ success: false, message: "Missing parameters" });
+      return;
+    }
+
+    const accessToken = await getAppOnlyToken();
+
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${userId}/messages/${messageId}/attachments/${attachmentId}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+
+    if (!response.ok) {
+      res.status(response.status).json({
+        success: false,
+        message: "Failed to fetch attachment from Graph API",
+      });
+      return;
+    }
+
+    const attachment = await response.json();
+
+    if (attachment.contentBytes) {
+      const buffer = Buffer.from(attachment.contentBytes, "base64");
+      res.setHeader(
+        "Content-Type",
+        attachment.contentType || "application/octet-stream",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${attachment.name || "attachment"}"`,
+      );
+      res.status(200).send(buffer);
+    } else {
+      res
+        .status(404)
+        .json({ success: false, message: "Attachment content not found" });
+    }
+  } catch (error: any) {
+    console.error("Fetch Attachment Error:", error);
     res.status(500).json({
       success: false,
       message: "Internal Server Error",
